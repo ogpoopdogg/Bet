@@ -198,6 +198,7 @@ const SCHEMA = [
 
   { group: 'Parlay finder (🔍 Find tab)' },
   { key: 'finderMinPayout', label: 'Minimum payout (× your bet)', type: 'number', def: 2, min: 1.1, max: 100, step: 0.1, help: '2 = a $10 bet must return at least $20 in total.' },
+  { key: 'finderMode', label: 'Parlay type', type: 'select', def: 'mixed', options: [['mixed', 'Mix of games'], ['sgp', 'Same game only']], help: 'Same as the switch on the Find screen.' },
   { key: 'finderCushion', label: 'Room for bet365\'s cut', type: 'number', def: 1.2, min: 1, max: 3, step: 0.05, help: 'bet365 pays less than the fair price. 1.2 = the fair payout must be 20% above your minimum, so bet365\'s real price can still reach it. bet365\'s exact cut isn\'t published here — adjust after comparing a few real prices.' },
   { key: 'finderLegs', label: 'Legs per parlay', type: 'number', def: 3, min: 2, max: 4, step: 1 },
   { key: 'finderMaxShow', label: 'Parlays to show', type: 'number', def: 10, min: 1, max: 50, step: 1 },
@@ -1432,49 +1433,58 @@ async function finderGameLegs(ctx, onProg = () => {}) {
   return legs;
 }
 function finderBuild(cands) {
-  const k = S.finderLegs;
+  const k = S.finderLegs, sgp = S.finderMode === 'sgp';
   const sorted = cands.filter(c => c.p >= S.finderMinLegProb && c.p <= S.finderMaxLegProb).sort((a, b) => b.p - a.p);
-  const seen = new Set(), pool = [];
-  for (const c of sorted) { const key = finderKey(c); if (seen.has(key)) continue; seen.add(key); pool.push(c); if (pool.length >= S.finderPoolSize) break; }
-  const n = pool.length;
-  const rho = pool.map(() => new Array(n).fill(0)), src = pool.map(() => new Array(n).fill(''));
-  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
-    if (pool[i].gameId !== pool[j].gameId) continue;
-    const r = pairRho(pool[i], pool[j]); rho[i][j] = rho[j][i] = r.rho; src[i][j] = src[j][i] = r.src;
-  }
-  const out = [], idx = [];
-  const rec = start => {
-    if (idx.length === k) {
-      const legs = idx.map(i => pool[i]);
-      const per = {};
-      for (const l of legs) { per[l.gameId] = (per[l.gameId] || 0) + 1; if (per[l.gameId] > S.finderMaxPerGame) return; }
-      const ps = legs.map(l => l.p), rm = idx.map(a => idx.map(b => rho[a][b]));
-      const jp = jointProb(ps, rm);
-      if (!(jp.p > 0)) return;
-      const fair = 1 / jp.p;
-      if (fair < S.finderMinPayout * S.finderCushion) return;
-      out.push({ idx: idx.slice(), P: jp.p, pInd: jp.pInd, factor: jp.factor, fair });
-      return;
+  // Same-game mode: build a separate pool for each game so every game gets its own best bets.
+  const groups = sgp ? Object.values(sorted.reduce((m, c) => ((m[c.gameId] = m[c.gameId] || []).push(c), m), {})) : [sorted];
+  const maxPerGame = sgp ? k : S.finderMaxPerGame;
+  const out = [], pairInfo = new Map(); let poolTotal = 0;
+  for (const group of groups) {
+    const seen = new Set(), pool = [];
+    for (const c of group) { const key = finderKey(c); if (seen.has(key)) continue; seen.add(key); pool.push(c); if (pool.length >= S.finderPoolSize) break; }
+    const n = pool.length; poolTotal += n;
+    if (n < k) continue;
+    const rho = pool.map(() => new Array(n).fill(0));
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+      if (pool[i].gameId !== pool[j].gameId) continue;
+      const r = pairRho(pool[i], pool[j]); rho[i][j] = rho[j][i] = r.rho;
+      pairInfo.set(pool[i].id + '|' + pool[j].id, r); pairInfo.set(pool[j].id + '|' + pool[i].id, r);
     }
-    for (let i = start; i < n; i++) { idx.push(i); rec(i + 1); idx.pop(); }
-  };
-  rec(0);
+    const idx = [];
+    const rec = start => {
+      if (idx.length === k) {
+        const legs = idx.map(i => pool[i]);
+        const per = {};
+        for (const l of legs) { per[l.gameId] = (per[l.gameId] || 0) + 1; if (per[l.gameId] > maxPerGame) return; }
+        const ps = legs.map(l => l.p), rm = idx.map(a => idx.map(b => rho[a][b]));
+        const jp = jointProb(ps, rm);
+        if (!(jp.p > 0)) return;
+        const fair = 1 / jp.p;
+        if (fair < S.finderMinPayout * S.finderCushion) return;
+        out.push({ legs, P: jp.p, pInd: jp.pInd, factor: jp.factor, fair });
+        return;
+      }
+      for (let i = start; i < n; i++) { idx.push(i); rec(i + 1); idx.pop(); }
+    };
+    rec(0);
+  }
   out.sort((a, b) => b.P - a.P);
   const use = {}, picked = [];
   for (const o of out) {
-    if (o.idx.some(i => (use[i] || 0) >= S.finderLegUse)) continue;
-    o.idx.forEach(i => use[i] = (use[i] || 0) + 1);
+    if (o.legs.some(l => (use[l.id] || 0) >= S.finderLegUse)) continue;
+    o.legs.forEach(l => use[l.id] = (use[l.id] || 0) + 1);
     picked.push(o);
     if (picked.length >= S.finderMaxShow) break;
   }
   state.foundRes = {};
   return {
-    pool: n, combos: out.length,
+    pool: poolTotal, combos: out.length,
     cards: picked.map(o => ({
       id: uid(), P: o.P, pInd: o.pInd, factor: o.factor, fair: o.fair, price: null,
-      pairs: o.idx.flatMap((a, ai) => o.idx.slice(ai + 1).filter(b => pool[a].gameId === pool[b].gameId).map(b => ({ a: plainLabel(pool[a]), b: plainLabel(pool[b]), rho: rho[a][b], src: src[a][b] }))),
-      legs: o.idx.map(i => {
-        const c = pool[i]; state.foundRes[c.id] = c;
+      sgp: o.legs.every(l => l.gameId === o.legs[0].gameId) ? `${o.legs[0].game.away} @ ${o.legs[0].game.home}` : null,
+      pairs: o.legs.flatMap((a, ai) => o.legs.slice(ai + 1).filter(b => a.gameId === b.gameId).map(b => { const r = pairInfo.get(a.id + '|' + b.id) || { rho: 0, src: '' }; return { a: plainLabel(a), b: plainLabel(b), rho: r.rho, src: r.src }; })),
+      legs: o.legs.map(c => {
+        state.foundRes[c.id] = c;
         return { id: c.id, label: plainLabel(c), look: lookFor(c), p: c.p, hit: legHitText(c), game: `${c.game.away} @ ${c.game.home}`, start: c.game.start, goalie: !!c.goalie, kind: c.kind, bk: blockKey(c), hideLabel: c.kind === 'player' ? `${c.subjectName} ${PM[c.market].label.toLowerCase()}` : plainLabel(c) };
       }),
     })),
@@ -1485,18 +1495,44 @@ function getBlocked(date) { const B = LS.get('pv_blocked', null); return (B && B
 function finderRebuild() {
   const f = state.found; if (!f || !state.findCands) return;
   const bl = new Set(getBlocked(f.date).keys);
-  const b = finderBuild(state.findCands.filter(c => !bl.has(blockKey(c))));
+  const gameOnly = S.finderMode === 'sgp' && state.finderGame ? state.finderGame : null;
+  const b = finderBuild(state.findCands.filter(c => !bl.has(blockKey(c)) && (!gameOnly || c.gameId === gameOnly)));
   Object.assign(f, { pool: b.pool, combos: b.combos, cards: b.cards });
   saveFound(); renderFound();
 }
 function saveFound() { if (state.found && !LS.set('pv_found', state.found)) toast('Could not save results on this device'); }
 function viewFind() {
   V.innerHTML = `<div class="card"><h2>Find my parlays</h2>
-    <p class="small muted">Checks every game that hasn't started, every player, and finds the ${S.finderLegs}-leg parlays most likely to hit that pay at least ${S.finderMinPayout}× your bet.</p>
-    <div class="row" style="margin-bottom:10px"><label class="f">Day<input type="date" id="fDate" value="${state.found?.date && state.found.date >= todayStr() ? state.found.date : todayStr()}"></label></div>
+    <p class="small muted">Checks games that haven't started and finds the ${S.finderLegs}-leg parlays most likely to hit that pay at least ${S.finderMinPayout}× your bet.</p>
+    <div class="row" style="margin-bottom:10px">
+      <button class="b ${S.finderMode !== 'sgp' ? 'p' : ''}" data-act="fMode" data-m="mixed">🔀 Mix of games</button>
+      <button class="b ${S.finderMode === 'sgp' ? 'p' : ''}" data-act="fMode" data-m="sgp">🎯 Same game</button></div>
+    <div class="row" style="margin-bottom:10px"><label class="f">Day<input type="date" id="fDate" value="${state.found?.date && state.found.date >= todayStr() ? state.found.date : todayStr()}"></label>
+      <label class="f" id="fGameW" style="display:${S.finderMode === 'sgp' ? '' : 'none'}">Which game<select id="fGame"><option value="">Best from every game</option></select></label></div>
     <button class="b p bigbtn" id="fGo" data-act="runFinder" ${state.finding ? 'disabled' : ''}>🔍 Find my parlays</button>
     <div id="fProg"></div></div><div id="fOut"></div>`;
   renderFound();
+  fillFindGames();
+}
+async function fillFindGames() {
+  const sel = $('#fGame'), date = $('#fDate')?.value; if (!sel || !date) return;
+  try {
+    const d = await api(`v1/schedule/${date}`, 120000);
+    const wk = (d.gameWeek || []).find(w => w.date === date);
+    const games = (wk?.games || []).filter(g => (g.gameType === 2 || g.gameType === 3) && ['FUT', 'PRE'].includes(g.gameState));
+    if (!$('#fGame')) return;
+    if (state.finderGame && !games.some(g => g.id === state.finderGame)) state.finderGame = null;
+    sel.innerHTML = `<option value="">Best from every game</option>` + games.map(g => `<option value="${g.id}" ${state.finderGame === g.id ? 'selected' : ''}>${esc(g.awayTeam.abbrev)} @ ${esc(g.homeTeam.abbrev)} · ${new Date(g.startTimeUTC).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</option>`).join('');
+  } catch (e) {}
+}
+function findSettingsChanged() {
+  // Rebuild instantly when the last scan already covers what's needed; otherwise wait for the Find button.
+  const f = state.found, c = state.findCands;
+  if (!f || !c || f.date !== ($('#fDate')?.value || f.date)) return;
+  const need = S.finderMode === 'sgp' && state.finderGame ? [state.finderGame] : null;
+  const have = new Set(c.map(x => x.gameId));
+  if (need ? need.every(id => have.has(id)) : !state.findScope) finderRebuild();
+  else { const el = $('#fOut'); if (el) el.innerHTML = '<div class="card">Tap <b>🔍 Find my parlays</b> to check this.</div>'; }
 }
 function finderProg(text, f) {
   const el = $('#fProg'); if (!el) return;
@@ -1514,7 +1550,9 @@ async function runFinder() {
     const games = (wk?.games || []).filter(g => (g.gameType === 2 || g.gameType === 3) && ['FUT', 'PRE'].includes(g.gameState)).map(g => ({
       id: g.id, date, season: g.season, start: g.startTimeUTC, home: g.homeTeam.abbrev, away: g.awayTeam.abbrev,
       homeName: `${g.homeTeam.placeName?.default || ''} ${g.homeTeam.commonName?.default || ''}`.trim(),
-      awayName: `${g.awayTeam.placeName?.default || ''} ${g.awayTeam.commonName?.default || ''}`.trim() }));
+      awayName: `${g.awayTeam.placeName?.default || ''} ${g.awayTeam.commonName?.default || ''}`.trim() }))
+      .filter(g => !(S.finderMode === 'sgp' && state.finderGame) || g.id === state.finderGame);
+    state.findScope = S.finderMode === 'sgp' && state.finderGame ? state.finderGame : null;
     if (!games.length) {
       state.found = { date, created: Date.now(), cards: [], games: 0, none: true }; saveFound(); finderProg('', 0); const p = $('#fProg'); if (p) p.innerHTML = ''; renderFound(); return;
     }
@@ -1551,7 +1589,7 @@ function renderFound() {
   if (!f.cards.length) h += `<div class="card">Nothing matched. In Settings → Parlay finder, try lowering "Lowest leg chance allowed" or "Minimum payout".</div>`;
   f.cards.forEach((c, i) => {
     const oneIn = 1 / c.P;
-    h += `<div class="pcard"><div class="small muted">Parlay ${i + 1}</div>
+    h += `<div class="pcard"><div class="small muted">Parlay ${i + 1}${c.sgp ? ` · 🎯 Same game: ${esc(c.sgp)}` : ''}</div>
       <div class="chance">Hits about ${oneIn < 1.95 ? '1 in 2' : '1 in ' + Math.round(oneIn)} times (${pct(c.P, 0)})</div>
       <ol>${c.legs.map(l => `<li>${esc(l.label)}${l.goalie ? ' 🥅' : ''} <span class="muted small">(${pct(l.p, 0)})</span><span class="look">${esc(l.look)} · ${esc(l.game)}${l.hit ? ' · ' + esc(l.hit) : ''}</span>${l.bk ? `<button class="b s" data-act="fHide" data-i="${i}" data-j="${c.legs.indexOf(l)}">🚫 Not on bet365</button>` : ''}</li>`).join('')}</ol>
       <div class="need">💰 Only bet if bet365 pays <b>${fmtOdds(c.fair)} or more</b><br><span class="muted small">That means a $10 bet returns at least $${(10 * c.fair).toFixed(2)}</span></div>
@@ -1674,6 +1712,12 @@ function onClick(ev) {
     case 'closeModal': closeModal(); break;
     case 'advToggle': { const on = !document.body.classList.contains('adv'); document.body.classList.toggle('adv', on); LS.set('pv_adv', on); b.textContent = on ? 'Simple ◂' : 'Advanced ▸'; if (!on && ['games', 'game', 'legs', 'parlays'].includes(state.tab)) setTab('find'); break; }
     case 'runFinder': runFinder(); break;
+    case 'fMode': {
+      S.finderMode = b.dataset.m === 'sgp' ? 'sgp' : 'mixed'; saveSettings();
+      document.querySelectorAll('[data-act="fMode"]').forEach(x => x.classList.toggle('p', x.dataset.m === S.finderMode));
+      const w = $('#fGameW'); if (w) w.style.display = S.finderMode === 'sgp' ? '' : 'none';
+      findSettingsChanged(); break;
+    }
     case 'fHide': {
       const f = state.found, l = f?.cards[i]?.legs[+b.dataset.j]; if (!l || !l.bk) break;
       const B = getBlocked(f.date); if (!B.keys.includes(l.bk)) B.keys.push(l.bk); B.labels[l.bk] = l.hideLabel;
@@ -1758,6 +1802,8 @@ function onChange(ev) {
   if (t.id === 'tmMarket') { syncTmForm(); $('#tmOut').innerHTML = ''; return; }
   if (t.id === 'pbMarket') { syncPbForm(); return; }
   if (t.id === 'importFile') { importData(t.files[0]); return; }
+  if (t.id === 'fGame') { state.finderGame = +t.value || null; findSettingsChanged(); return; }
+  if (t.id === 'fDate') { state.finderGame = null; fillFindGames(); return; }
   if (t.dataset.set) {
     const s = SCHEMA.find(x => x.key === t.dataset.set); let v;
     if (s.type === 'bool') v = t.checked;

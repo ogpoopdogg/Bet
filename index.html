@@ -212,7 +212,9 @@ const SCHEMA = [
   { key: 'fSog', label: 'Use shots on goal', type: 'bool', def: true },
   { key: 'fScoring', label: 'Use goals, points, assists', type: 'bool', def: true },
   { key: 'fLines', label: 'Use game lines (moneyline, puck line, totals)', type: 'bool', def: true },
-  { key: 'fBlocks', label: 'Use blocked shots & goalie saves', type: 'bool', def: true },
+  { key: 'fBlocks', label: 'Use blocked shots', type: 'bool', def: true },
+  { key: 'fSaves', label: 'Use goalie saves', type: 'bool', def: true },
+  { key: 'finderMaxSameType', label: 'Max legs of the same bet type', type: 'number', def: 1, min: 1, max: 4, step: 1, help: '1 = every leg is a different kind of bet (e.g. one shots, one points, one blocks). Stops one easy bet type taking over.' },
 
   { group: 'Bankroll' },
   { key: 'bankroll', label: 'Bankroll ($)', type: 'number', def: 100, min: 0, max: 10000000, step: 1 },
@@ -1415,7 +1417,7 @@ async function finderGameLegs(ctx, onProg = () => {}) {
     } catch (e) {}
     done++; onProg(done / total);
   }));
-  if (S.fBlocks) for (const T of [ctx.home, ctx.away]) {
+  if (S.fSaves) for (const T of [ctx.home, ctx.away]) {
     const starts = {};
     for (const b of (ctx.box[T] || []).slice(0, 10)) for (const [pid, p] of Object.entries(b.pl)) if (p.gk && p.st && p.t === T) starts[pid] = (starts[pid] || 0) + 1;
     const best = Object.entries(starts).sort((a, b) => b[1] - a[1])[0];
@@ -1456,6 +1458,8 @@ function finderBuild(cands) {
         const legs = idx.map(i => pool[i]);
         const per = {};
         for (const l of legs) { per[l.gameId] = (per[l.gameId] || 0) + 1; if (per[l.gameId] > maxPerGame) return; }
+        const types = {};
+        for (const l of legs) { const t = l.kind === 'player' ? l.market : (l.market === 'ml' || l.market === 'spread' ? 'result' : l.market); types[t] = (types[t] || 0) + 1; if (types[t] > S.finderMaxSameType) return; }
         const ps = legs.map(l => l.p), rm = idx.map(a => idx.map(b => rho[a][b]));
         const jp = jointProb(ps, rm);
         if (!(jp.p > 0)) return;

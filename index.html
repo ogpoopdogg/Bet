@@ -206,6 +206,8 @@ const SCHEMA = [
   { key: 'finderMaxPerGame', label: 'Max legs from one game', type: 'number', def: 2, min: 1, max: 4, step: 1, help: '1 = never same-game.' },
   { key: 'finderLegUse', label: 'Max times one bet can repeat across parlays', type: 'number', def: 2, min: 1, max: 10, step: 1, help: 'Keeps the list from being the same few bets over and over.' },
   { key: 'finderPoolSize', label: 'Best bets to combine', type: 'number', def: 60, min: 10, max: 120, step: 5, help: 'The top bets by chance that get mixed into parlays. Higher = slower.' },
+  { key: 'finderTopF', label: 'Forwards per team to scan (most ice time)', type: 'number', def: 9, min: 0, max: 20, step: 1, help: 'Sportsbooks mostly post props for regulars. 9 = each team\'s 9 forwards with the most ice time in their last 5 games. 0 = everyone.' },
+  { key: 'finderTopD', label: 'Defencemen per team to scan (most ice time)', type: 'number', def: 4, min: 0, max: 10, step: 1, help: '0 = everyone. Needs "Box scores per team" above 0.' },
   { key: 'fSog', label: 'Use shots on goal', type: 'bool', def: true },
   { key: 'fScoring', label: 'Use goals, points, assists', type: 'bool', def: true },
   { key: 'fLines', label: 'Use game lines (moneyline, puck line, totals)', type: 'bool', def: true },
@@ -1386,7 +1388,21 @@ async function finderGameLegs(ctx, onProg = () => {}) {
   if (S.fSog) markets.push(['sog', [1.5, 2.5, 3.5]]);
   if (S.fScoring) markets.push(['goals', [0.5]], ['points', [0.5, 1.5]], ['assists', [0.5]]);
   if (S.fBlocks) markets.push(['blocks', [0.5, 1.5, 2.5]]);
-  const skaters = markets.length ? ctx.players.filter(p => p.pos !== 'G') : [];
+  let skaters = markets.length ? ctx.players.filter(p => p.pos !== 'G') : [];
+  if (S.finderTopF > 0 || S.finderTopD > 0) {
+    const keep = new Set();
+    for (const T of [ctx.home, ctx.away]) {
+      const boxes = (ctx.box[T] || []).slice(0, 5); if (!boxes.length) { skaters.filter(p => p.team === T).forEach(p => keep.add(p.id)); continue; }
+      const toi = {};
+      for (const b of boxes) for (const [pid, p] of Object.entries(b.pl)) if (p.t === T && !p.gk && p.toi) (toi[pid] = toi[pid] || []).push(p.toi);
+      const avg = id => toi[id] ? toi[id].reduce((s, x) => s + x, 0) / boxes.length : 0;
+      const team = skaters.filter(p => p.team === T);
+      const pick = (list, n) => (n > 0 ? list.slice().sort((a, b) => avg(b.id) - avg(a.id)).slice(0, n) : list).forEach(p => keep.add(p.id));
+      pick(team.filter(p => p.pos !== 'D'), S.finderTopF);
+      pick(team.filter(p => p.pos === 'D'), S.finderTopD);
+    }
+    skaters = skaters.filter(p => keep.has(p.id));
+  }
   let done = 0; const total = skaters.length + 1;
   await Promise.all(skaters.map(async pl => {
     try {
@@ -1459,10 +1475,19 @@ function finderBuild(cands) {
       pairs: o.idx.flatMap((a, ai) => o.idx.slice(ai + 1).filter(b => pool[a].gameId === pool[b].gameId).map(b => ({ a: plainLabel(pool[a]), b: plainLabel(pool[b]), rho: rho[a][b], src: src[a][b] }))),
       legs: o.idx.map(i => {
         const c = pool[i]; state.foundRes[c.id] = c;
-        return { id: c.id, label: plainLabel(c), look: lookFor(c), p: c.p, hit: legHitText(c), game: `${c.game.away} @ ${c.game.home}`, start: c.game.start, goalie: !!c.goalie, kind: c.kind };
+        return { id: c.id, label: plainLabel(c), look: lookFor(c), p: c.p, hit: legHitText(c), game: `${c.game.away} @ ${c.game.home}`, start: c.game.start, goalie: !!c.goalie, kind: c.kind, bk: blockKey(c), hideLabel: c.kind === 'player' ? `${c.subjectName} ${PM[c.market].label.toLowerCase()}` : plainLabel(c) };
       }),
     })),
   };
+}
+function blockKey(c) { return c.kind === 'player' ? `${c.gameId}|p${c.subjectId}|${c.market}` : `${c.gameId}|${c.market}|${c.team}|${c.side}|${c.line}`; }
+function getBlocked(date) { const B = LS.get('pv_blocked', null); return (B && B.date === date && Array.isArray(B.keys)) ? Object.assign({ labels: {} }, B) : { date, keys: [], labels: {} }; }
+function finderRebuild() {
+  const f = state.found; if (!f || !state.findCands) return;
+  const bl = new Set(getBlocked(f.date).keys);
+  const b = finderBuild(state.findCands.filter(c => !bl.has(blockKey(c))));
+  Object.assign(f, { pool: b.pool, combos: b.combos, cards: b.cards });
+  saveFound(); renderFound();
 }
 function saveFound() { if (state.found && !LS.set('pv_found', state.found)) toast('Could not save results on this device'); }
 function viewFind() {
@@ -1504,9 +1529,9 @@ async function runFinder() {
     }
     finderProg('Building parlays…', 0.95);
     await new Promise(r => setTimeout(r, 30));
-    const b = finderBuild(cands);
-    state.found = { date, created: Date.now(), games: games.length, bets: cands.length, pool: b.pool, combos: b.combos, cards: b.cards };
-    saveFound();
+    state.findCands = cands;
+    state.found = { date, created: Date.now(), games: games.length, bets: cands.length, cards: [] };
+    finderRebuild();
     const p = $('#fProg'); if (p) p.innerHTML = '';
     renderFound();
   } catch (e) {
@@ -1520,13 +1545,15 @@ function renderFound() {
   if (!f) { el.innerHTML = ''; return; }
   if (f.none) { el.innerHTML = `<div class="card">No games left to bet on for ${esc(f.date)} — they've all started or there are none. Try another day.</div>`; return; }
   let h = `<div class="card small"><b>${f.cards.length} parlays</b> from ${f.games} game${f.games === 1 ? '' : 's'} on ${esc(f.date)} · checked ${f.bets} bets · found ${new Date(f.created).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}<br>
-    ⚠️ Before you bet: make sure each player is playing tonight${f.cards.some(c => c.legs.some(l => l.goalie)) ? ' and each goalie is starting' : ''}.</div>`;
+    ⚠️ Before you bet: make sure each player is playing tonight${f.cards.some(c => c.legs.some(l => l.goalie)) ? ' and each goalie is starting' : ''}.<br>
+    If bet365 doesn't offer a bet, tap <b>🚫 Not on bet365</b> under it and the list rebuilds without it.
+    ${(() => { const B = getBlocked(f.date); return B.keys.length ? `<br>🚫 ${B.keys.length} bet${B.keys.length > 1 ? 's' : ''} hidden today: <span class="muted">${B.keys.map(k => esc(B.labels[k] || k)).join(', ')}</span> <button class="b s" data-act="fUnhide">Show them again</button>` : ''; })()}</div>`;
   if (!f.cards.length) h += `<div class="card">Nothing matched. In Settings → Parlay finder, try lowering "Lowest leg chance allowed" or "Minimum payout".</div>`;
   f.cards.forEach((c, i) => {
     const oneIn = 1 / c.P;
     h += `<div class="pcard"><div class="small muted">Parlay ${i + 1}</div>
       <div class="chance">Hits about ${oneIn < 1.95 ? '1 in 2' : '1 in ' + Math.round(oneIn)} times (${pct(c.P, 0)})</div>
-      <ol>${c.legs.map(l => `<li>${esc(l.label)}${l.goalie ? ' 🥅' : ''} <span class="muted small">(${pct(l.p, 0)})</span><span class="look">${esc(l.look)} · ${esc(l.game)}${l.hit ? ' · ' + esc(l.hit) : ''}</span></li>`).join('')}</ol>
+      <ol>${c.legs.map(l => `<li>${esc(l.label)}${l.goalie ? ' 🥅' : ''} <span class="muted small">(${pct(l.p, 0)})</span><span class="look">${esc(l.look)} · ${esc(l.game)}${l.hit ? ' · ' + esc(l.hit) : ''}</span>${l.bk ? `<button class="b s" data-act="fHide" data-i="${i}" data-j="${c.legs.indexOf(l)}">🚫 Not on bet365</button>` : ''}</li>`).join('')}</ol>
       <div class="need">💰 Only bet if bet365 pays <b>${fmtOdds(c.fair)} or more</b><br><span class="muted small">That means a $10 bet returns at least $${(10 * c.fair).toFixed(2)}</span></div>
       <div class="row"><label class="f">bet365 parlay price<input class="price" data-fprice="${i}" inputmode="text" placeholder="${S.oddsFormat === 'decimal' ? '4.50' : '+350'}" value="${c.price ? oddsInputVal(c.price) : ''}"></label>
       <button class="b" data-act="fWhy" data-i="${i}">Why?</button><button class="b" data-act="fSave" data-i="${i}">Save</button></div>
@@ -1647,6 +1674,19 @@ function onClick(ev) {
     case 'closeModal': closeModal(); break;
     case 'advToggle': { const on = !document.body.classList.contains('adv'); document.body.classList.toggle('adv', on); LS.set('pv_adv', on); b.textContent = on ? 'Simple ◂' : 'Advanced ▸'; if (!on && ['games', 'game', 'legs', 'parlays'].includes(state.tab)) setTab('find'); break; }
     case 'runFinder': runFinder(); break;
+    case 'fHide': {
+      const f = state.found, l = f?.cards[i]?.legs[+b.dataset.j]; if (!l || !l.bk) break;
+      const B = getBlocked(f.date); if (!B.keys.includes(l.bk)) B.keys.push(l.bk); B.labels[l.bk] = l.hideLabel;
+      LS.set('pv_blocked', B);
+      if (state.findCands) { finderRebuild(); toast('Hidden — list rebuilt'); } else { toast('Hidden — finding again…'); runFinder(); }
+      break;
+    }
+    case 'fUnhide': {
+      const f = state.found; if (!f) break;
+      LS.set('pv_blocked', { date: f.date, keys: [], labels: {} });
+      if (state.findCands) finderRebuild(); else runFinder();
+      break;
+    }
     case 'fWhy': openModal(fWhyHTML(i)); break;
     case 'fDetail': { const l = state.found.cards[i].legs[+b.dataset.j]; const c = state.foundRes[l.id]; if (c) openModal(c.kind === 'player' ? playerDetailHTML(c.res) : teamDetailHTML(Object.assign({}, c.res, { tmInfo: c.res.tm ? tmSummary(c.res.tm) : null }), c.game)); break; }
     case 'fSave': {

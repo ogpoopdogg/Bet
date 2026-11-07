@@ -1,0 +1,1528 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Parlay Value · NHL</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0b0e13">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Parlay Value">
+<style>
+:root{--bg:#0e1116;--card:#161b22;--line:#2a313c;--text:#e6edf3;--muted:#8b949e;--acc:#f2c94c;--good:#3fb950;--bad:#f85149;--warn:#d29922;--in:#0d1117}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{position:sticky;top:0;z-index:5;background:#0b0e13;border-bottom:1px solid var(--line);padding:10px 12px 0}
+header h1{font-size:16px;margin:0 0 6px}
+header h1 span{color:var(--acc)}
+nav{display:flex;gap:2px;overflow-x:auto}
+nav button{background:none;border:0;color:var(--muted);padding:8px 10px;border-bottom:2px solid transparent;font:inherit;cursor:pointer;white-space:nowrap}
+nav button.on{color:var(--text);border-bottom-color:var(--acc)}
+main{max-width:1150px;margin:0 auto;padding:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:12px}
+.card h2{font-size:15px;margin:0 0 10px}
+h3{font-size:12px;margin:14px 0 6px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
+label.f{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)}
+input,select,textarea{background:var(--in);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:7px 8px;font:inherit;min-width:0}
+input[type=number]{width:90px}
+input.odds{width:80px}
+input.sm{width:64px;padding:4px 6px}
+button.b{background:#21262d;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:7px 12px;font:inherit;cursor:pointer}
+button.b:hover{border-color:var(--muted)}
+button.p{background:var(--acc);color:#111;border-color:var(--acc);font-weight:600}
+button.s{padding:4px 8px;font-size:12px}
+button.x{color:var(--bad)}
+button:disabled{opacity:.5;cursor:default}
+.muted{color:var(--muted)}.small{font-size:12px}
+.good{color:var(--good)}.bad{color:var(--bad)}.warn{color:var(--warn)}
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap;vertical-align:top}
+th{color:var(--muted);font-weight:500;font-size:12px}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+td.wrap{white-space:normal;min-width:180px}
+.game{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.big{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin:8px 0}
+.big div{background:var(--in);border:1px solid var(--line);border-radius:8px;padding:8px}
+.big b{display:block;font-size:18px}
+.big span{font-size:11px;color:var(--muted)}
+.pill{display:inline-block;padding:1px 6px;border-radius:10px;background:#21262d;font-size:11px;color:var(--muted);margin-right:4px}
+.leg{border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:8px}
+.leg .t{font-weight:600}
+#modal{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:20;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px 8px}
+#modal[hidden]{display:none}
+.sheet{background:var(--card);border:1px solid var(--line);border-radius:12px;max-width:860px;width:100%;padding:14px;position:relative}
+.sheet .close{position:absolute;top:8px;right:8px}
+.sheet h2{font-size:16px;margin:0 40px 4px 0}
+#toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#21262d;border:1px solid var(--line);padding:8px 14px;border-radius:8px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:30}
+#toast.on{opacity:1}
+pre{background:var(--in);border:1px solid var(--line);border-radius:6px;padding:8px;overflow:auto;font-size:12px;white-space:pre}
+.setgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px}
+.help{font-size:11px;color:var(--muted);margin-top:2px}
+.bar{fill:#4b5563}.bar.hit{fill:var(--good)}
+.progress{color:var(--acc)}
+.chk{display:flex;align-items:center;gap:6px;font-size:13px}
+body.locked header,body.locked main{display:none}
+#login{display:none;max-width:360px;margin:12vh auto 0;padding:20px}
+body.locked #login{display:block}
+#login h1{font-size:22px;margin:0 0 4px}#login h1 span{color:var(--acc)}
+#login p{color:var(--muted);margin:0 0 16px}
+#login input{width:100%;margin-bottom:10px;padding:11px 12px}
+#login button{width:100%;padding:11px}
+#loginErr{color:var(--bad);font-size:13px;min-height:18px;margin-top:10px}
+.hdr{display:flex;align-items:center;gap:8px}.hdr h1{flex:1}
+#installBtn{display:none;box-shadow:0 0 0 0 rgba(242,201,76,.6);animation:pvglow 2.4s ease-in-out infinite}
+@keyframes pvglow{50%{box-shadow:0 0 0 6px rgba(242,201,76,0)}}
+@media (prefers-reduced-motion:reduce){#installBtn{animation:none}}
+</style>
+</head>
+<body class="locked">
+<section id="login">
+  <h1><span>Parlay Value</span> · NHL</h1>
+  <p>Sign in to continue.</p>
+  <input id="lgEmail" type="email" placeholder="Email" autocomplete="username">
+  <input id="lgPass" type="password" placeholder="Password" autocomplete="current-password">
+  <button id="lgBtn" class="b p">Sign in</button>
+  <div id="loginErr"></div>
+</section>
+<header>
+  <div class="hdr"><h1><span>Parlay Value</span> · NHL</h1>
+    <button id="installBtn" class="b s p">Install app</button>
+    <button id="signOutBtn" class="b s">Sign out</button></div>
+  <nav id="nav">
+    <button data-tab="games">Games</button>
+    <button data-tab="game">Game</button>
+    <button data-tab="legs">Leg pool</button>
+    <button data-tab="parlays">Parlays</button>
+    <button data-tab="tracker">Tracker</button>
+    <button data-tab="settings">Settings</button>
+  </nav>
+</header>
+<main id="view"></main>
+<div id="modal" hidden><div class="sheet"><button class="b s close" data-act="closeModal">✕</button><div id="modalBody"></div></div></div>
+<div id="toast"></div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script>
+'use strict';
+/* =====================================================================
+   Parlay Value · NHL
+   Stats: NHL public web API (api-web.nhle.com). Odds: typed in by you (bet365).
+   Every probability is shown with the steps used to build it.
+   ===================================================================== */
+
+/* ---------- storage ---------- */
+const LS = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } },
+};
+
+/* ---------- settings ---------- */
+const SCHEMA = [
+  { group: 'Connection' },
+  { key: 'connMode', label: 'Connection mode', type: 'select', def: 'auto', options: [['auto', 'Auto (direct, then proxy)'], ['direct', 'Direct only'], ['proxy', 'Proxy only']], help: 'If the browser blocks direct NHL calls, set up the free proxy (bottom of this page).' },
+  { key: 'proxyUrl', label: 'Proxy URL', type: 'text', def: '', help: 'Your Cloudflare Worker URL, e.g. https://nhl.yourname.workers.dev' },
+  { key: 'seasonOverride', label: 'Season override', type: 'text', def: '', help: 'Blank = use the game\'s season. Format 20262027.' },
+
+  { group: 'How far back' },
+  { key: 'seasonsBack', label: 'Seasons of player history', type: 'number', def: 2, min: 1, max: 8, step: 1, help: '1 = this season only. Used for averages, windows and variance.' },
+  { key: 'seasonDecay', label: 'Weight per older season', type: 'number', def: 0.5, min: 0, max: 1, step: 0.05, help: 'Last season counts this much, the season before counts this squared, etc. 1 = all equal, 0 = ignore older seasons.' },
+  { key: 'h2hSeasonsBack', label: 'Seasons of head-to-head history', type: 'number', def: 3, min: 1, max: 8, step: 1, help: 'How far back to look for games vs this opponent.' },
+  { key: 'winShort', label: 'Short window (games)', type: 'number', def: 5, min: 1, max: 82, step: 1 },
+  { key: 'winMid', label: 'Medium window (games)', type: 'number', def: 10, min: 1, max: 82, step: 1 },
+  { key: 'winLong', label: 'Long window (games)', type: 'number', def: 20, min: 1, max: 164, step: 1, help: 'Also the window used for the raw hit rate.' },
+  { key: 'boxDepth', label: 'Box scores per team', type: 'number', def: 15, min: 0, max: 82, step: 1, help: 'Recent games whose box scores load per team. Feeds hits, blocked shots, team shots and opponent shot factors. More = slower first load.' },
+  { key: 'includePlayoffs', label: 'Include playoff games', type: 'bool', def: false },
+  { key: 'goalieStartsOnly', label: 'Goalies: starts only', type: 'bool', def: true, help: 'Ignore relief appearances in goalie samples.' },
+
+  { group: 'Player rate blend (relative weights)' },
+  { key: 'wSeason', label: 'Season-weighted average', type: 'number', def: 30, min: 0, max: 100, step: 1 },
+  { key: 'wShort', label: 'Short window', type: 'number', def: 15, min: 0, max: 100, step: 1 },
+  { key: 'wMid', label: 'Medium window', type: 'number', def: 25, min: 0, max: 100, step: 1 },
+  { key: 'wLong', label: 'Long window', type: 'number', def: 20, min: 0, max: 100, step: 1 },
+  { key: 'wH2H', label: 'Head-to-head vs opponent', type: 'number', def: 5, min: 0, max: 100, step: 1 },
+  { key: 'wVenue', label: 'Home / road split', type: 'number', def: 5, min: 0, max: 100, step: 1 },
+  { key: 'shrinkK', label: 'Small-sample shrink (games)', type: 'number', def: 5, min: 0, max: 50, step: 1, help: 'Head-to-head, home/road and hit rates are pulled toward the bigger picture as if this many average games were added. 0 = trust tiny samples fully.' },
+  { key: 'minGames', label: 'Flag samples smaller than', type: 'number', def: 10, min: 1, max: 82, step: 1 },
+
+  { group: 'Adjustments' },
+  { key: 'oppStrength', label: 'Opponent adjustment strength', type: 'number', def: 0.5, min: 0, max: 1, step: 0.05, help: '0 = ignore opponent. 1 = full ratio (e.g. opponent allows 10% more shots than average → ×1.10).' },
+  { key: 'toiStrength', label: 'Ice-time trend strength', type: 'number', def: 0.5, min: 0, max: 1, step: 0.05, help: 'Recent TOI vs average TOI. 0 = ignore.' },
+  { key: 'empWeight', label: 'Hit-rate weight in final %', type: 'number', def: 0.25, min: 0, max: 1, step: 0.05, help: 'Final = (1 − this) × model + this × shrunk hit rate over the long window.' },
+  { key: 'distModel', label: 'Count distribution', type: 'select', def: 'nb', options: [['nb', 'Negative binomial (uses real variance)'], ['poisson', 'Poisson']], help: 'Shots and saves usually vary more than Poisson assumes; negative binomial uses the player\'s own variance.' },
+
+  { group: 'Team / game model' },
+  { key: 'teamL10Weight', label: 'Last-10 form weight', type: 'number', def: 0.3, min: 0, max: 1, step: 0.05 },
+  { key: 'teamSplitWeight', label: 'Home/road split weight', type: 'number', def: 0.5, min: 0, max: 1, step: 0.05 },
+  { key: 'h2hTeamWeight', label: 'Head-to-head meetings weight', type: 'number', def: 0.1, min: 0, max: 1, step: 0.05 },
+  { key: 'otHomeShare', label: 'Home win share of OT/SO', type: 'number', def: 0.5, min: 0, max: 1, step: 0.01 },
+  { key: 'drawInflation', label: 'Regulation tie multiplier', type: 'number', def: 1, min: 0.5, max: 2, step: 0.05, help: '1 = plain independent Poisson. Raise if you find ties are under-predicted.' },
+  { key: 'totalsIncludeOT', label: 'Totals include OT/SO', type: 'bool', def: true, help: 'Check bet365\'s rules for the market; turn off for regulation-only totals.' },
+
+  { group: 'Parlay builder' },
+  { key: 'legsPerParlay', label: 'Legs per parlay', type: 'number', def: 3, min: 2, max: 6, step: 1 },
+  { key: 'minLegProb', label: 'Min leg probability', type: 'number', def: 0.3, min: 0, max: 0.99, step: 0.01 },
+  { key: 'minEV', label: 'Min parlay EV %', type: 'number', def: 0, min: -100, max: 500, step: 0.5 },
+  { key: 'minEdge', label: 'Min parlay edge (pts)', type: 'number', def: 0, min: -100, max: 100, step: 0.5, help: 'Model % minus implied %.' },
+  { key: 'maxLegsPerGame', label: 'Max legs from one game', type: 'number', def: 2, min: 1, max: 6, step: 1, help: 'Set 1 to never build same-game parlays.' },
+  { key: 'maxResults', label: 'Results to show', type: 'number', def: 40, min: 5, max: 500, step: 5 },
+  { key: 'sortBy', label: 'Sort by', type: 'select', def: 'ev', options: [['ev', 'Expected value'], ['edge', 'Edge'], ['prob', 'Hit probability'], ['kelly', 'Kelly stake']] },
+
+  { group: 'Same-game correlation' },
+  { key: 'corrMode', label: 'Correlation source', type: 'select', def: 'empirical', options: [['empirical', 'Measure from shared past games, else defaults'], ['manual', 'Defaults below only']] },
+  { key: 'corrShrinkK', label: 'Correlation shrink (games)', type: 'number', def: 20, min: 0, max: 200, step: 1, help: 'Measured correlation is pulled toward the default as if this many games at the default were added.' },
+  { key: 'corrSamePlayer', label: 'Default: same player', type: 'number', def: 0, min: -0.9, max: 0.9, step: 0.05 },
+  { key: 'corrSameTeam', label: 'Default: same team', type: 'number', def: 0, min: -0.9, max: 0.9, step: 0.05 },
+  { key: 'corrSameGame', label: 'Default: same game, other', type: 'number', def: 0, min: -0.9, max: 0.9, step: 0.05, help: 'Defaults are 0 (independent) because the right values are unknown until measured. Positive = legs tend to hit together.' },
+
+  { group: 'Bankroll' },
+  { key: 'bankroll', label: 'Bankroll ($)', type: 'number', def: 100, min: 0, max: 10000000, step: 1 },
+  { key: 'kellyFraction', label: 'Kelly fraction', type: 'number', def: 0.25, min: 0, max: 1, step: 0.05, help: '1 = full Kelly (aggressive). 0.25 = quarter Kelly.' },
+  { key: 'maxStakePct', label: 'Max stake (% of bankroll)', type: 'number', def: 2, min: 0, max: 100, step: 0.5 },
+
+  { group: 'Display' },
+  { key: 'oddsFormat', label: 'Odds format', type: 'select', def: 'american', options: [['american', 'American (+150)'], ['decimal', 'Decimal (2.50)']] },
+];
+const DEFAULTS = Object.fromEntries(SCHEMA.filter(s => s.key).map(s => [s.key, s.def]));
+let S = Object.assign({}, DEFAULTS, LS.get('pv_settings', {}));
+function saveSettings() { LS.set('pv_settings', S); }
+
+/* ---------- markets ---------- */
+const PM = {
+  sog:     { label: 'Shots on goal', src: 'log', get: e => e.shots, opp: 'shotsAllowed', line: 2.5 },
+  goals:   { label: 'Goals', src: 'log', get: e => e.goals, opp: 'goalsAllowed', line: 0.5 },
+  first:   { label: 'First goalscorer', src: 'log', get: e => e.goals, opp: 'goalsAllowed', line: 0.5, first: true },
+  assists: { label: 'Assists', src: 'log', get: e => e.assists, opp: 'goalsAllowed', line: 0.5 },
+  points:  { label: 'Points', src: 'log', get: e => e.points, opp: 'goalsAllowed', line: 0.5 },
+  ppp:     { label: 'Power-play points', src: 'log', get: e => e.powerPlayPoints, opp: 'goalsAllowed', line: 0.5 },
+  blocks:  { label: 'Blocked shots', src: 'box', get: p => p.b, opp: 'oppShotsFor', line: 1.5 },
+  hits:    { label: 'Hits', src: 'box', get: p => p.h, opp: null, line: 1.5 },
+  pim:     { label: 'Penalty minutes', src: 'log', get: e => e.pim, opp: null, line: 0.5 },
+  saves:   { label: 'Goalie saves', src: 'glog', get: e => (e.shotsAgainst != null && e.goalsAgainst != null) ? e.shotsAgainst - e.goalsAgainst : null, opp: 'oppShotsFor', line: 25.5, goalie: true },
+  ga:      { label: 'Goalie goals against', src: 'glog', get: e => e.goalsAgainst, opp: 'oppGoalsFor', line: 2.5, goalie: true },
+};
+const TM = {
+  ml:        { label: 'Moneyline (incl. OT/SO)', team: true, key: 'game' },
+  spread:    { label: 'Puck line / spread', team: true, line: -1.5, key: 'team' },
+  total:     { label: 'Game total goals', ou: true, line: 5.5, game: true, key: 'game' },
+  teamTotal: { label: 'Team total goals', team: true, ou: true, line: 2.5, key: 'team' },
+  reg3:      { label: '60-minute result (3-way)', team: true, sides: [['win', 'Team wins in regulation'], ['draw', 'Tied after 60 min']], key: 'game' },
+  btts:      { label: 'Both teams to score', game: true, yn: true, key: 'game' },
+  teamFirst: { label: 'Team to score first', team: true, key: 'game' },
+  teamShots: { label: 'Team shots on goal', team: true, ou: true, line: 29.5, key: 'team' },
+  gameShots: { label: 'Game total shots on goal', ou: true, line: 58.5, game: true, key: 'game' },
+};
+const OPP_LABEL = { shotsAllowed: 'shots allowed per game by', goalsAllowed: 'goals allowed per game by', oppShotsFor: 'shots per game by', oppGoalsFor: 'goals per game by' };
+
+/* ---------- small helpers ---------- */
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const mean = a => a.length ? a.reduce((s, x) => s + x, 0) / a.length : null;
+function variance(a) { if (a.length < 2) return null; const m = mean(a); return a.reduce((s, x) => s + (x - m) ** 2, 0) / (a.length - 1); }
+const pct = (p, d = 1) => (p == null || !isFinite(p)) ? '–' : (p * 100).toFixed(d) + '%';
+const fx = (x, d = 2) => (x == null || !isFinite(x)) ? '–' : (+x).toFixed(d);
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+function toiMin(t) { if (!t || typeof t !== 'string') return null; const [m, s] = t.split(':').map(Number); return isFinite(m) ? m + (s || 0) / 60 : null; }
+function todayStr() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function seasonLabel(s) { const y = Math.floor(s / 10000); return y + '-' + String(y + 1).slice(2); }
+
+/* ---------- odds ---------- */
+function parseOdds(str) {
+  const s = String(str ?? '').trim(); if (!s) return null;
+  const n = parseFloat(s); if (!isFinite(n)) return null;
+  if (/^[+-]/.test(s) || Math.abs(n) >= 100) {
+    if (n >= 100) return 1 + n / 100;
+    if (n <= -100) return 1 + 100 / (-n);
+    return null;
+  }
+  return n > 1 ? n : null;
+}
+function fmtOdds(dec) {
+  if (!dec || !isFinite(dec) || dec <= 1) return '–';
+  if (S.oddsFormat === 'decimal') return dec.toFixed(2);
+  return dec >= 2 ? '+' + Math.round((dec - 1) * 100) : '-' + Math.round(100 / (dec - 1));
+}
+function oddsInputVal(dec) { if (!dec) return ''; return S.oddsFormat === 'decimal' ? dec.toFixed(2) : fmtOdds(dec); }
+
+/* ---------- distributions ---------- */
+function lgamma(x) {
+  const c = [0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059, 12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
+  if (x < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * x)) - lgamma(1 - x);
+  x -= 1; let a = c[0]; const t = x + 7.5;
+  for (let i = 1; i < 9; i++) a += c[i] / (x + i);
+  return 0.5 * Math.log(2 * Math.PI) + (x + 0.5) * Math.log(t) - t + Math.log(a);
+}
+function poisPmf(k, l) { if (l <= 0) return k === 0 ? 1 : 0; return Math.exp(k * Math.log(l) - l - lgamma(k + 1)); }
+function nbPmf(k, m, r) { const p = r / (r + m); return Math.exp(lgamma(k + r) - lgamma(r) - lgamma(k + 1) + r * Math.log(p) + k * Math.log(1 - p)); }
+function dist(m, disp) {
+  const vr = m * Math.max(1, disp);
+  const maxK = Math.ceil(m + 12 * Math.sqrt(vr) + 10);
+  const out = new Array(maxK + 1);
+  if (disp <= 1.0001) for (let k = 0; k <= maxK; k++) out[k] = poisPmf(k, m);
+  else { const r = Math.max(0.5, m / (disp - 1)); for (let k = 0; k <= maxK; k++) out[k] = nbPmf(k, m, r); }
+  return out;
+}
+function tail(pmf, line) {
+  let over = 0, under = 0, push = 0;
+  pmf.forEach((p, k) => { if (k > line) over += p; else if (k < line) under += p; else push += p; });
+  const s = over + under + push || 1;
+  return { over: over / s, under: under / s, push: push / s };
+}
+function trimPmf(pmf, line) {
+  const out = []; let c = 0;
+  for (let k = 0; k < pmf.length; k++) { out.push(pmf[k]); c += pmf[k]; if (c > 0.9995 && k > line + 2) break; }
+  return out;
+}
+function dispersion(vals) {
+  const m = mean(vals), v = variance(vals);
+  const raw = (m > 0 && v != null) ? v / m : 1;
+  const n = vals.length;
+  const disp = S.distModel === 'poisson' ? 1 : Math.max(1, 1 + (n / (n + 10)) * (raw - 1));
+  return { raw, disp };
+}
+
+/* ---------- seasons ---------- */
+let CUR = 20262027;
+function seasonFromDate(ds) { const d = new Date(ds + 'T12:00:00'); const y = d.getFullYear(), m = d.getMonth() + 1; const s = m >= 8 ? y : y - 1; return s * 10000 + s + 1; }
+function seasonIdx(season) { return Math.floor(CUR / 10000) - Math.floor(season / 10000); }
+function seasonList(n) { const sy = Math.floor(CUR / 10000); return Array.from({ length: n }, (_, i) => (sy - i) * 10000 + (sy - i + 1)); }
+
+/* =====================================================================
+   DATA LAYER
+   ===================================================================== */
+const NHL = 'https://api-web.nhle.com/';
+const memCache = new Map(), inflight = new Map();
+let directWorks = null;
+async function rawFetch(url) {
+  const r = await fetch(url);
+  if (!r.ok) { const e = new Error('HTTP ' + r.status + ' for ' + url); e.status = r.status; throw e; }
+  return r.json();
+}
+function netError() {
+  return new Error('Could not reach NHL data. Your browser may be blocking direct calls — set up the free proxy in Settings → Proxy setup, then set Connection mode.');
+}
+async function api(path, ttl = 600000) {
+  const c = memCache.get(path);
+  if (c && Date.now() - c.t < ttl) return c.v;
+  if (inflight.has(path)) return inflight.get(path);
+  const pr = (async () => {
+    const mode = S.connMode; let v;
+    const proxy = (S.proxyUrl || '').trim().replace(/\/+$/, '');
+    if (mode !== 'proxy' && !(directWorks === false && proxy && mode === 'auto')) {
+      try { v = await rawFetch(NHL + path); directWorks = true; }
+      catch (e) {
+        if (e.status) throw e;
+        if (directWorks !== true) directWorks = false;
+        if (mode === 'direct' || !proxy) throw netError();
+      }
+    }
+    if (v === undefined) {
+      if (!proxy) throw netError();
+      try { v = await rawFetch(proxy + '/' + path); }
+      catch (e) { if (e.status) throw e; throw new Error('Proxy did not respond. Check the Proxy URL in Settings.'); }
+    }
+    memCache.set(path, { t: Date.now(), v });
+    return v;
+  })();
+  inflight.set(path, pr);
+  try { return await pr; } finally { inflight.delete(path); }
+}
+function limiter(n) {
+  let active = 0; const q = [];
+  const next = () => {
+    if (active >= n || !q.length) return;
+    active++; const { fn, res, rej } = q.shift();
+    fn().then(res, rej).finally(() => { active--; next(); });
+  };
+  return fn => new Promise((res, rej) => { q.push({ fn, res, rej }); next(); });
+}
+const limit = limiter(6);
+
+/* box score store: trimmed, final games only, persisted */
+let BOX = LS.get('pv_box', {});
+function saveBox() {
+  const ids = Object.keys(BOX);
+  if (ids.length > 700) { ids.sort((a, b) => (BOX[a].saved || 0) - (BOX[b].saved || 0)).slice(0, ids.length - 600).forEach(id => delete BOX[id]); }
+  if (!LS.set('pv_box', BOX)) { BOX = {}; LS.set('pv_box', BOX); }
+}
+let boxDirty = false;
+function trimBox(b, g) {
+  const t = { id: b.id || g.id, date: g.date, season: g.season, final: true, saved: Date.now(),
+    home: { a: b.homeTeam?.abbrev, s: b.homeTeam?.score, sog: b.homeTeam?.sog },
+    away: { a: b.awayTeam?.abbrev, s: b.awayTeam?.score, sog: b.awayTeam?.sog }, pl: {} };
+  const pbg = b.playerByGameStats || {};
+  for (const side of ['homeTeam', 'awayTeam']) {
+    const abbr = side === 'homeTeam' ? t.home.a : t.away.a; const grp = pbg[side] || {};
+    for (const k of ['forwards', 'defense']) for (const p of (grp[k] || [])) {
+      t.pl[p.playerId] = { t: abbr, h: p.hits ?? null, b: p.blockedShots ?? null, s: p.sog ?? null, toi: toiMin(p.toi) };
+    }
+    for (const p of (grp.goalies || [])) t.pl[p.playerId] = { t: abbr, gk: 1, sa: p.shotsAgainst ?? null, ga: p.goalsAgainst ?? null, st: p.starter ?? null, toi: toiMin(p.toi) };
+  }
+  return t;
+}
+async function getBox(g) {
+  if (BOX[g.id]) return BOX[g.id];
+  const b = await limit(() => api(`v1/gamecenter/${g.id}/boxscore`, 864e5));
+  const t = trimBox(b, g);
+  BOX[g.id] = t; boxDirty = true;
+  return t;
+}
+
+async function playerLogs(pid, seasons, types) {
+  const all = [];
+  await Promise.all(seasons.flatMap(s => types.map(gt =>
+    limit(() => api(`v1/player/${pid}/game-log/${s}/${gt}`, 600000))
+      .then(d => { for (const e of (d.gameLog || [])) all.push(Object.assign({}, e, { season: s, gt })); })
+      .catch(() => {}))));
+  return all;
+}
+
+/* ---------- game context ---------- */
+const ctxCache = new Map();
+function ctxSig(g) { return [g.id, S.seasonsBack, S.h2hSeasonsBack, S.boxDepth, S.includePlayoffs, S.seasonOverride].join('|'); }
+async function loadCtx(g, progress = () => {}) {
+  const key = ctxSig(g);
+  if (ctxCache.has(key)) { const c = ctxCache.get(key); CUR = c.season; c.tm = teamModel(c); return c; }
+  const season = /^\d{8}$/.test(S.seasonOverride) ? +S.seasonOverride : (g.season || seasonFromDate(g.date));
+  CUR = season;
+  const ctx = { key, game: g, date: g.date, season, home: g.home, away: g.away, standings: {}, players: [], sched: {}, box: {}, boxStats: {} };
+
+  progress('Loading standings and rosters…');
+  const stPath = g.date < todayStr() ? `v1/standings/${g.date}` : 'v1/standings/now';
+  const [stand, rH, rA] = await Promise.all([
+    api(stPath, 300000).catch(() => api('v1/standings/now', 300000)),
+    api(`v1/roster/${g.home}/current`, 3600000).catch(() => null),
+    api(`v1/roster/${g.away}/current`, 3600000).catch(() => null),
+  ]);
+  let sgf = 0, sgp = 0;
+  for (const r of (stand.standings || [])) {
+    const a = r.teamAbbrev?.default; if (!a) continue;
+    ctx.standings[a] = r; sgf += r.goalFor || 0; sgp += r.gamesPlayed || 0;
+  }
+  ctx.league = { gpg: sgp ? sgf / sgp : null, teams: Object.keys(ctx.standings).length };
+  for (const [abbr, ro] of [[g.home, rH], [g.away, rA]]) {
+    if (!ro) continue;
+    for (const grp of ['forwards', 'defensemen', 'goalies']) for (const p of (ro[grp] || [])) {
+      ctx.players.push({ id: p.id, name: `${p.firstName?.default || ''} ${p.lastName?.default || ''}`.trim(), pos: p.positionCode, num: p.sweaterNumber, team: abbr });
+    }
+  }
+
+  progress('Loading schedules and results…');
+  const seasons = seasonList(Math.max(S.seasonsBack, S.h2hSeasonsBack));
+  const types = S.includePlayoffs ? [2, 3] : [2];
+  for (const abbr of [g.home, g.away]) {
+    const lists = await Promise.all(seasons.map(s => limit(() => api(`v1/club-schedule-season/${abbr}/${s}`, s === season ? 600000 : 864e5)).then(d => d.games || []).catch(() => [])));
+    const seen = new Set(), out = [];
+    for (const x of lists.flat()) {
+      if (seen.has(x.id)) continue; seen.add(x.id);
+      if (!['OFF', 'FINAL'].includes(x.gameState) || !types.includes(x.gameType)) continue;
+      if (!(x.gameDate < g.date)) continue;
+      if (x.homeTeam?.score == null || x.awayTeam?.score == null) continue;
+      out.push({ id: x.id, date: x.gameDate, season: x.season, type: x.gameType, home: x.homeTeam.abbrev, away: x.awayTeam.abbrev, hs: x.homeTeam.score, as: x.awayTeam.score, reg: (x.gameOutcome?.lastPeriodType || 'REG') === 'REG', last: x.gameOutcome?.lastPeriodType || 'REG' });
+    }
+    out.sort((a, b) => b.date.localeCompare(a.date));
+    ctx.sched[abbr] = out;
+  }
+
+  if (S.boxDepth > 0) {
+    let done = 0; const tot = Math.min(S.boxDepth, ctx.sched[g.home].length) + Math.min(S.boxDepth, ctx.sched[g.away].length);
+    for (const abbr of [g.home, g.away]) {
+      const hist = ctx.sched[abbr].slice(0, S.boxDepth);
+      ctx.box[abbr] = (await Promise.all(hist.map(h => getBox(h).then(b => { done++; progress(`Loading box scores ${done}/${tot}…`); return b; }).catch(() => null)))).filter(Boolean);
+    }
+    if (boxDirty) { saveBox(); boxDirty = false; }
+    const allSog = [], seen = new Set();
+    for (const abbr of [g.home, g.away]) {
+      const sf = [], sa = [], tot2 = [], games = [];
+      for (const b of ctx.box[abbr]) {
+        const isH = b.home.a === abbr; const me = isH ? b.home : b.away, op = isH ? b.away : b.home;
+        if (me.sog == null || op.sog == null) continue;
+        sf.push(me.sog); sa.push(op.sog); tot2.push(me.sog + op.sog);
+        games.push({ id: b.id, date: b.date, sf: me.sog, sa: op.sog, opp: op.a, home: isH });
+        if (!seen.has(b.id)) { seen.add(b.id); allSog.push(me.sog, op.sog); }
+      }
+      if (sf.length) ctx.boxStats[abbr] = { n: sf.length, sf: mean(sf), sa: mean(sa), sfArr: sf, saArr: sa, totArr: tot2, games };
+    }
+    ctx.shotBase = allSog.length >= 6 ? mean(allSog) : null;
+  } else { ctx.box[g.home] = []; ctx.box[g.away] = []; ctx.shotBase = null; }
+
+  ctx.tm = teamModel(ctx);
+  ctxCache.set(key, ctx);
+  if (ctxCache.size > 6) ctxCache.delete(ctxCache.keys().next().value);
+  return ctx;
+}
+
+function oppRatios(ctx, opp) {
+  const st = ctx.standings[opp], lg = ctx.league.gpg, bs = ctx.boxStats[opp];
+  const gp = st?.gamesPlayed;
+  return {
+    goalsAllowed: (gp && lg) ? (st.goalAgainst / gp) / lg : null,
+    oppGoalsFor: (gp && lg) ? (st.goalFor / gp) / lg : null,
+    shotsAllowed: (bs && ctx.shotBase) ? bs.sa / ctx.shotBase : null,
+    oppShotsFor: (bs && ctx.shotBase) ? bs.sf / ctx.shotBase : null,
+  };
+}
+
+/* =====================================================================
+   PLAYER MODEL
+   ===================================================================== */
+const peCache = new Map();
+async function playerEntries(ctx, pid, team, mk) {
+  const M = PM[mk];
+  const key = ctx.key + '|' + pid + '|' + team + '|' + M.src + '|' + mk + '|' + S.goalieStartsOnly;
+  if (peCache.has(key)) return peCache.get(key);
+  let entries = [];
+  if (M.src === 'box') {
+    for (const b of (ctx.box[team] || [])) {
+      const p = b.pl[pid]; if (!p || p.t !== team) continue;
+      const v = M.get(p); if (v == null || !isFinite(v)) continue;
+      const home = b.home.a === team;
+      entries.push({ gid: b.id, date: b.date, season: b.season, val: v, opp: home ? b.away.a : b.home.a, home, toi: p.toi });
+    }
+  } else {
+    const seasons = seasonList(Math.max(S.seasonsBack, S.h2hSeasonsBack));
+    const logs = await playerLogs(pid, seasons, S.includePlayoffs ? [2, 3] : [2]);
+    for (const e of logs) {
+      if (!(e.gameDate < ctx.date)) continue;
+      if (M.src === 'glog' && S.goalieStartsOnly && e.gamesStarted !== 1) continue;
+      const v = M.get(e); if (v == null || !isFinite(v)) continue;
+      entries.push({ gid: e.gameId, date: e.gameDate, season: e.season, val: v, opp: e.opponentAbbrev, home: e.homeRoadFlag === 'H', toi: toiMin(e.toi) });
+    }
+  }
+  const seen = new Set();
+  entries = entries.filter(e => !seen.has(e.gid) && seen.add(e.gid)).sort((a, b) => b.date.localeCompare(a.date));
+  peCache.set(key, entries);
+  if (peCache.size > 400) peCache.delete(peCache.keys().next().value);
+  return entries;
+}
+function legResult(v, line, side) { if (v > line) return side === 'over'; if (v < line) return side === 'under'; return null; }
+
+function analyzeEntries(entries, o) {
+  const K = S.shrinkK;
+  const hist = entries.filter(e => seasonIdx(e.season) < S.seasonsBack);
+  if (!hist.length) return { error: 'No games found in the chosen history window.' };
+  let ws = 0, wv = 0;
+  for (const e of hist) { const w = Math.pow(S.seasonDecay, seasonIdx(e.season)); ws += w; wv += w * e.val; }
+  const base = ws > 0 ? wv / ws : mean(hist.map(e => e.val));
+  const comps = [{ key: 'base', label: `Season-weighted average (${hist.length} games, older seasons ×${S.seasonDecay} each)`, n: hist.length, rate: base, w: S.wSeason }];
+  for (const [k, N] of [['short', S.winShort], ['mid', S.winMid], ['long', S.winLong]]) {
+    const sl = hist.slice(0, N);
+    if (sl.length) comps.push({ key: k, label: `Last ${sl.length} games`, n: sl.length, rate: mean(sl.map(e => e.val)), w: S['w' + cap(k)] });
+  }
+  const h2h = entries.filter(e => e.opp === o.opp && seasonIdx(e.season) < S.h2hSeasonsBack);
+  if (h2h.length) { const raw = mean(h2h.map(e => e.val)); comps.push({ key: 'h2h', label: `vs ${o.opp} (${h2h.length} games, shrunk)`, n: h2h.length, raw, rate: (h2h.length * raw + K * base) / (h2h.length + K), w: S.wH2H }); }
+  const ven = hist.filter(e => e.home === o.isHome);
+  if (ven.length) { const raw = mean(ven.map(e => e.val)); comps.push({ key: 'venue', label: `${o.isHome ? 'Home' : 'Road'} games (${ven.length}, shrunk)`, n: ven.length, raw, rate: (ven.length * raw + K * base) / (ven.length + K), w: S.wVenue }); }
+  let sw = 0, sr = 0;
+  for (const c of comps) if (c.w > 0) { sw += c.w; sr += c.w * c.rate; }
+  const blended = sw > 0 ? sr / sw : base;
+
+  let toiF = 1, toiInfo = null;
+  if (!o.goalie) {
+    const tAll = hist.map(e => e.toi).filter(x => x > 0), tRec = hist.slice(0, S.winShort).map(e => e.toi).filter(x => x > 0);
+    if (tAll.length >= 3 && tRec.length) { const ra = mean(tRec) / mean(tAll); toiF = clamp(1 + S.toiStrength * (ra - 1), 0.7, 1.3); toiInfo = { recent: mean(tRec), all: mean(tAll), ratio: ra }; }
+  }
+  let oppF = 1;
+  if (o.oppRatio != null && isFinite(o.oppRatio)) oppF = clamp(1 + S.oppStrength * (o.oppRatio - 1), 0.7, 1.3);
+  const lambda = Math.max(0.01, blended * toiF * oppF);
+
+  const vs = hist.slice(0, 82).map(e => e.val);
+  const d = dispersion(vs);
+  const pmf = dist(lambda, d.disp);
+  const t = tail(pmf, o.line);
+  const pModel = o.side === 'over' ? t.over : t.under;
+
+  const win = hist.slice(0, S.winLong);
+  let hits = 0, decided = 0;
+  for (const e of win) { const r = legResult(e.val, o.line, o.side); if (r !== null) { decided++; if (r) hits++; } }
+  const pEmpRaw = decided ? hits / decided : null;
+  const pEmp = (decided + K) > 0 ? (hits + K * pModel) / (decided + K) : pModel;
+  const p = clamp((1 - S.empWeight) * pModel + S.empWeight * pEmp, 0.001, 0.999);
+
+  const rows = [];
+  const addRow = (label, arr) => {
+    if (!arr.length) return; let h = 0, dd = 0;
+    for (const e of arr) { const r = legResult(e.val, o.line, o.side); if (r !== null) { dd++; if (r) h++; } }
+    rows.push({ label, n: arr.length, avg: mean(arr.map(e => e.val)), hits: h, dec: dd, rate: dd ? h / dd : null });
+  };
+  addRow(`Last ${S.winShort}`, hist.slice(0, S.winShort));
+  addRow(`Last ${S.winMid}`, hist.slice(0, S.winMid));
+  addRow(`Last ${S.winLong}`, hist.slice(0, S.winLong));
+  for (let i = 0; i < S.seasonsBack; i++) addRow(seasonLabel(CUR - i * 10001), hist.filter(e => seasonIdx(e.season) === i));
+  addRow(`vs ${o.opp} (last ${S.h2hSeasonsBack} seasons)`, h2h);
+  addRow('Home', hist.filter(e => e.home)); addRow('Road', hist.filter(e => !e.home));
+
+  const outcomes = {};
+  for (const e of entries) { const r = legResult(e.val, o.line, o.side); if (r !== null) outcomes[e.gid] = r ? 1 : 0; }
+  return {
+    lambda, blended, base, comps, toiF, toiInfo, oppF, oppRatio: o.oppRatio, disp: d.disp, rawDisp: d.raw,
+    pmf: trimPmf(pmf, o.line), over: t.over, under: t.under, push: t.push, pModel, pEmp, pEmpRaw, hits, decided, p, rows,
+    recent: hist.slice(0, Math.max(S.winLong, 10)).map(e => ({ d: e.date, v: e.val, o: e.opp, h: e.home, t: e.toi })),
+    h2hGames: h2h.map(e => ({ d: e.date, v: e.val, h: e.home, t: e.toi, s: e.season })),
+    outcomes, n: hist.length, lowSample: hist.length < S.minGames,
+  };
+}
+
+async function analyzePlayer(ctx, pl, mk, line, side) {
+  CUR = ctx.season;
+  const M = PM[mk]; const team = pl.team;
+  const opp = team === ctx.home ? ctx.away : ctx.home, isHome = team === ctx.home;
+  const entries = await playerEntries(ctx, pl.id, team, mk);
+  const ratios = oppRatios(ctx, opp);
+  const oppRatio = M.opp ? ratios[M.opp] : null;
+  let res;
+  if (M.first) {
+    res = analyzeEntries(entries, { line: 0.5, side: 'over', opp, isHome, oppRatio, goalie: false });
+    if (!res.error) res = firstScorer(ctx, res, team);
+  } else {
+    res = analyzeEntries(entries, { line, side, opp, isHome, oppRatio, goalie: !!M.goalie });
+  }
+  Object.assign(res, { oppKey: M.opp, market: mk, line: M.first ? null : line, side: M.first ? 'yes' : side, team, opp, isHome, name: pl.name, pid: pl.id, pos: pl.pos, src: M.src });
+  return res;
+}
+
+/* First goalscorer: goals in a game ≈ Poisson process. P(player scores the first goal)
+   = (player expected goals / game expected goals) × P(at least one goal). */
+function firstScorer(ctx, gr, team) {
+  const tm = ctx.tm;
+  if (tm.error) return { error: 'First goalscorer needs the team model: ' + tm.error };
+  const lt = tm.lH + tm.lA;
+  const share = clamp(gr.lambda / lt, 0, 1);
+  const pAny = 1 - Math.exp(-lt);
+  const p = clamp(share * pAny, 0.0005, 0.999);
+  return Object.assign(gr, {
+    first: { lt, share, pAny, lTeam: team === ctx.home ? tm.lH : tm.lA, anytime: gr.p },
+    pModel: p, p, pEmp: null, pEmpRaw: null, outcomes: null, push: 0,
+  });
+}
+
+/* =====================================================================
+   TEAM / GAME MODEL
+   ===================================================================== */
+function teamRate(st, venue, kind) {
+  const gp = st.gamesPlayed; if (!gp) return null;
+  const K = S.shrinkK;
+  const overall = (kind === 'For' ? st.goalFor : st.goalAgainst) / gp;
+  const vgp = st[venue + 'GamesPlayed'] || 0;
+  const vraw = vgp ? st[venue + 'Goals' + kind] / vgp : overall;
+  const vr = (vgp * vraw + K * overall) / (vgp + K || 1);
+  const split = (1 - S.teamSplitWeight) * overall + S.teamSplitWeight * vr;
+  const lgp = st.l10GamesPlayed || 0;
+  const l10 = lgp ? st['l10Goals' + kind] / lgp : split;
+  return { overall, vraw, vgp, vr, l10, lgp, blended: (1 - S.teamL10Weight) * split + S.teamL10Weight * l10 };
+}
+function teamModel(ctx) {
+  const H = ctx.standings[ctx.home], A = ctx.standings[ctx.away], lg = ctx.league.gpg;
+  if (!H || !A) return { error: 'Standings not found for one of these teams.' };
+  if (!H.gamesPlayed || !A.gamesPlayed || !lg) return { error: 'Not enough games played yet this season for the team model.' };
+  const hF = teamRate(H, 'home', 'For'), hA = teamRate(H, 'home', 'Against');
+  const aF = teamRate(A, 'road', 'For'), aA = teamRate(A, 'road', 'Against');
+  let lH = hF.blended * aA.blended / lg, lA = aF.blended * hA.blended / lg;
+  const base = { lH, lA };
+  const meet = (ctx.sched[ctx.home] || []).filter(g => (g.home === ctx.away || g.away === ctx.away) && seasonIdx(g.season) < S.h2hSeasonsBack);
+  let h2h = null;
+  if (meet.length) {
+    const tg = mean(meet.map(g => g.home === ctx.home ? g.hs : g.as)), og = mean(meet.map(g => g.home === ctx.home ? g.as : g.hs));
+    const K = S.shrinkK, n = meet.length, w = S.h2hTeamWeight;
+    const sH = (n * tg + K * lH) / (n + K), sA = (n * og + K * lA) / (n + K);
+    h2h = { n, tg, og, sH, sA, w };
+    lH = (1 - w) * lH + w * sH; lA = (1 - w) * lA + w * sA;
+  }
+  const MAXG = 13; const P = [];
+  let tot = 0;
+  for (let i = 0; i <= MAXG; i++) { P[i] = []; for (let j = 0; j <= MAXG; j++) { let v = poisPmf(i, lH) * poisPmf(j, lA); if (i === j) v *= S.drawInflation; P[i][j] = v; tot += v; } }
+  const states = []; const ot = S.otHomeShare;
+  for (let i = 0; i <= MAXG; i++) for (let j = 0; j <= MAXG; j++) {
+    const v = P[i][j] / tot; P[i][j] = v;
+    if (i !== j) states.push({ t: i, o: j, reg: true, p: v });
+    else { states.push({ t: i + 1, o: j, reg: false, p: v * ot }); states.push({ t: i, o: j + 1, reg: false, p: v * (1 - ot) }); }
+  }
+  return { lH, lA, base, h2h, hF, hA, aF, aA, lg, P, states, meet };
+}
+
+function teamPredicate(leg) {
+  const L = +leg.line;
+  const ou = x => { const r = x > L ? 'W' : x < L ? 'L' : 'P'; return leg.side === 'over' ? r : (r === 'W' ? 'L' : r === 'L' ? 'W' : 'P'); };
+  const adj = (t, o, reg) => (S.totalsIncludeOT || reg) ? [t, o] : (t > o ? [t - 1, o] : [t, o - 1]);
+  switch (leg.market) {
+    case 'ml': return (t, o) => t > o ? 'W' : 'L';
+    case 'reg3': return leg.side === 'draw' ? (t, o, reg) => (!reg ? 'W' : 'L') : (t, o, reg) => (reg && t > o ? 'W' : 'L');
+    case 'spread': return (t, o) => { const m = t - o + L; return m > 0 ? 'W' : m < 0 ? 'L' : 'P'; };
+    case 'total': return (t, o, reg) => { const [a, b] = adj(t, o, reg); return ou(a + b); };
+    case 'teamTotal': return (t, o, reg) => { const [a] = adj(t, o, reg); return ou(a); };
+    case 'btts': return (t, o, reg) => { const [a, b] = adj(t, o, reg); return ((a > 0 && b > 0) === (leg.side === 'yes')) ? 'W' : 'L'; };
+  }
+  return null;
+}
+
+function analyzeTeam(ctx, spec) {
+  CUR = ctx.season;
+  const leg = Object.assign({}, spec); const M = TM[leg.market];
+  if (M.game) leg.team = ctx.home;
+  if (leg.market === 'teamShots' || leg.market === 'gameShots') return analyzeShots(ctx, leg);
+  const tm = ctx.tm; if (tm.error) return { error: tm.error, market: leg.market, team: leg.team };
+  const subjHome = leg.team === ctx.home;
+  if (leg.market === 'teamFirst') {
+    const lt = tm.lH + tm.lA, lT = subjHome ? tm.lH : tm.lA;
+    const p = clamp(lT / lt * (1 - Math.exp(-lt)), 0.001, 0.999);
+    return { kind: 'team', market: leg.market, team: leg.team, side: 'yes', line: null, p, pModel: p, pEmp: null, push: 0, tm, firstTeam: { lt, lT }, outcomes: null, rows: [] };
+  }
+  const pred = teamPredicate(leg);
+  let w = 0, pu = 0;
+  for (const s of tm.states) { const [t, o] = subjHome ? [s.t, s.o] : [s.o, s.t]; const r = pred(t, o, s.reg); if (r === 'W') w += s.p; else if (r === 'P') pu += s.p; }
+  const hist = teamHist(ctx, leg, pred);
+  const K = S.shrinkK; const pModel = w;
+  const pEmp = (hist.dec + K) > 0 ? (hist.hits + K * pModel) / (hist.dec + K) : pModel;
+  const p = clamp((1 - S.empWeight) * pModel + S.empWeight * pEmp, 0.001, 0.999);
+  return { kind: 'team', market: leg.market, team: leg.team, side: leg.side, line: leg.line, p, pModel, pEmp, pEmpRaw: hist.dec ? hist.hits / hist.dec : null, hits: hist.hits, decided: hist.dec, push: pu, tm, rows: hist.rows, outcomes: hist.outcomes, recentGames: hist.list.slice(0, 30) };
+}
+
+function teamHist(ctx, leg, pred) {
+  const teams = TM[leg.market].game ? [ctx.home, ctx.away] : [leg.team];
+  const seen = new Set(), outcomes = {}, list = [];
+  for (const T of teams) for (const g of (ctx.sched[T] || [])) {
+    if (seasonIdx(g.season) >= Math.max(S.seasonsBack, S.h2hSeasonsBack)) continue;
+    if (seen.has(g.id)) continue; seen.add(g.id);
+    const tH = g.home === T; const t = tH ? g.hs : g.as, o = tH ? g.as : g.hs;
+    const r = pred(t, o, g.reg);
+    if (r !== 'P') outcomes[g.id] = r === 'W' ? 1 : 0;
+    list.push(Object.assign({}, g, { r, T, inHist: seasonIdx(g.season) < S.seasonsBack }));
+  }
+  list.sort((a, b) => b.date.localeCompare(a.date));
+  const histList = list.filter(g => g.inHist);
+  const rows = [];
+  const add = (label, arr) => { if (!arr.length) return; const d = arr.filter(g => g.r !== 'P'); const h = d.filter(g => g.r === 'W').length; rows.push({ label, n: arr.length, hits: h, dec: d.length, rate: d.length ? h / d.length : null }); };
+  for (const T of teams) {
+    const tl = histList.filter(g => g.home === T || g.away === T);
+    add(`${T} last ${S.winShort}`, tl.slice(0, S.winShort));
+    add(`${T} last ${S.winMid}`, tl.slice(0, S.winMid));
+    add(`${T} last ${S.winLong}`, tl.slice(0, S.winLong));
+    add(`${T} all (${S.seasonsBack} season${S.seasonsBack > 1 ? 's' : ''})`, tl);
+  }
+  const opp = leg.team === ctx.home ? ctx.away : ctx.home;
+  add(`Head-to-head (${S.h2hSeasonsBack} seasons)`, list.filter(g => (g.home === leg.team && g.away === opp) || (g.home === opp && g.away === leg.team) || (TM[leg.market].game && ((g.home === ctx.home && g.away === ctx.away) || (g.home === ctx.away && g.away === ctx.home)))).filter((g, i, a) => a.findIndex(x => x.id === g.id) === i));
+  let window = [];
+  for (const T of teams) window = window.concat(histList.filter(g => g.home === T || g.away === T).slice(0, S.winLong));
+  const wseen = new Set(); window = window.filter(g => !wseen.has(g.id) && wseen.add(g.id));
+  const dec = window.filter(g => g.r !== 'P');
+  return { outcomes, list, rows, hits: dec.filter(g => g.r === 'W').length, dec: dec.length };
+}
+
+function analyzeShots(ctx, leg) {
+  const T = leg.team, O = T === ctx.home ? ctx.away : ctx.home;
+  const bt = ctx.boxStats[T], bo = ctx.boxStats[O];
+  if (!bt || !bo) return { error: 'Shot markets need box scores — set "Box scores per team" above 0 in Settings.', market: leg.market, team: T };
+  let m, sample, comps;
+  if (leg.market === 'teamShots') {
+    m = (bt.sf + bo.sa) / 2; sample = bt.sfArr;
+    comps = [[`${T} shots for / game (last ${bt.n})`, bt.sf], [`${O} shots against / game (last ${bo.n})`, bo.sa]];
+  } else {
+    const mT = (bt.sf + bo.sa) / 2, mO = (bo.sf + bt.sa) / 2; m = mT + mO; sample = bt.totArr.concat(bo.totArr);
+    comps = [[`${T} shots for / game`, bt.sf], [`${O} shots against / game`, bo.sa], [`${O} shots for / game`, bo.sf], [`${T} shots against / game`, bt.sa]];
+  }
+  const d = dispersion(sample);
+  const pmf = dist(m, d.disp); const t = tail(pmf, +leg.line);
+  const pModel = leg.side === 'over' ? t.over : t.under;
+  const outcomes = {}; const games = []; const seen = new Set();
+  const teams = leg.market === 'gameShots' ? [T, O] : [T];
+  for (const X of teams) for (const g of ctx.boxStats[X].games) {
+    if (seen.has(g.id)) continue; seen.add(g.id);
+    const v = leg.market === 'gameShots' ? g.sf + g.sa : g.sf;
+    const r = legResult(v, +leg.line, leg.side);
+    if (r !== null) outcomes[g.id] = r ? 1 : 0;
+    games.push({ id: g.id, date: g.date, v, r, X, opp: g.opp });
+  }
+  games.sort((a, b) => b.date.localeCompare(a.date));
+  const dec = games.filter(g => g.r !== null), hits = dec.filter(g => g.r).length;
+  const K = S.shrinkK; const pEmp = (dec.length + K) > 0 ? (hits + K * pModel) / (dec.length + K) : pModel;
+  const p = clamp((1 - S.empWeight) * pModel + S.empWeight * pEmp, 0.001, 0.999);
+  return { kind: 'team', market: leg.market, team: T, side: leg.side, line: leg.line, p, pModel, pEmp, pEmpRaw: dec.length ? hits / dec.length : null, hits, decided: dec.length, push: t.push, shots: { m, comps, disp: d.disp, raw: d.raw, games }, pmf: trimPmf(pmf, +leg.line), outcomes, rows: [] };
+}
+
+/* =====================================================================
+   LEGS & PARLAYS
+   ===================================================================== */
+let LEGS = LS.get('pv_legs', []);
+let TRACK = LS.get('pv_tracker', []);
+function saveLegs() { if (!LS.set('pv_legs', LEGS)) toast('Storage full — remove some legs.'); }
+function saveTrack() { LS.set('pv_tracker', TRACK); }
+const effP = l => clamp((l.p || 0) + (l.adj || 0) / 100, 0.001, 0.999);
+const isGameLevel = l => l.kind === 'team' && TM[l.market]?.game;
+
+function legLabel(l) {
+  if (l.kind === 'custom') return l.label || 'Custom leg';
+  if (l.kind === 'player') {
+    const M = PM[l.market];
+    if (l.market === 'first') return `${l.subjectName} first goalscorer`;
+    if (l.market === 'goals' && l.side === 'over' && l.line === 0.5) return `${l.subjectName} anytime goal`;
+    return `${l.subjectName} ${l.side === 'over' ? 'Over' : 'Under'} ${l.line} ${M.label.toLowerCase()}`;
+  }
+  const g = l.game || {};
+  switch (l.market) {
+    case 'ml': return `${l.team} moneyline`;
+    case 'reg3': return l.side === 'draw' ? `60-min tie (${g.away}@${g.home})` : `${l.team} win in regulation`;
+    case 'spread': return `${l.team} ${l.line > 0 ? '+' : ''}${l.line} puck line`;
+    case 'total': return `${cap(l.side)} ${l.line} goals (${g.away}@${g.home})`;
+    case 'teamTotal': return `${l.team} ${cap(l.side)} ${l.line} goals`;
+    case 'btts': return `Both teams score: ${cap(l.side)} (${g.away}@${g.home})`;
+    case 'teamFirst': return `${l.team} to score first`;
+    case 'teamShots': return `${l.team} ${cap(l.side)} ${l.line} shots`;
+    case 'gameShots': return `${cap(l.side)} ${l.line} total shots (${g.away}@${g.home})`;
+  }
+  return l.market;
+}
+function conflictKey(l) {
+  if (l.kind === 'custom') return 'c|' + (l.group || l.id);
+  if (l.kind === 'player') return l.gameId + '|p' + l.subjectId + '|' + (l.market === 'first' ? 'goals' : l.market);
+  const k = TM[l.market]?.key === 'team' ? l.team : 'game';
+  return l.gameId + '|' + l.market + '|' + k;
+}
+function gameMini(g) { return { id: g.id, date: g.date, home: g.home, away: g.away, start: g.start, season: g.season, homeName: g.homeName, awayName: g.awayName }; }
+function makeLeg(ctx, res, extra) {
+  const l = Object.assign({
+    id: uid(), gameId: ctx.game.id, game: gameMini(ctx.game), adj: 0, include: true, lock: false, created: Date.now(),
+  }, extra);
+  applyRes(l, res);
+  return l;
+}
+function applyRes(l, res) {
+  const d = Object.assign({}, res); delete d.outcomes; delete d.tm;
+  if (res.tm) d.tmInfo = tmSummary(res.tm);
+  Object.assign(l, { p: res.p, pModel: res.pModel, pEmp: res.pEmp, push: res.push || 0, outcomes: res.outcomes || null, details: d, calcAt: Date.now() });
+}
+function tmSummary(tm) {
+  const top = [];
+  for (let i = 0; i < tm.P.length; i++) for (let j = 0; j < tm.P.length; j++) top.push({ h: i, a: j, p: tm.P[i][j] });
+  top.sort((a, b) => b.p - a.p);
+  return { lH: tm.lH, lA: tm.lA, base: tm.base, h2h: tm.h2h, hF: tm.hF, hA: tm.hA, aF: tm.aF, aA: tm.aA, lg: tm.lg, top: top.slice(0, 8), draw: tm.P.reduce((s, r, i) => s + r[i], 0) };
+}
+
+function legEV(l) {
+  const p = effP(l);
+  if (!l.odds) return { p, implied: null, edge: null, ev: null };
+  const implied = 1 / l.odds;
+  const push = l.push || 0;
+  const ev = p * l.odds + push - 1;
+  let noVig = null;
+  if (l.oddsOther) { const a = 1 / l.odds, b = 1 / l.oddsOther; noVig = a / (a + b); }
+  return { p, implied, edge: p - implied, ev, noVig };
+}
+
+function phi(oa, ob) {
+  let n11 = 0, n10 = 0, n01 = 0, n00 = 0;
+  for (const k in oa) { if (!(k in ob)) continue; const a = oa[k], b = ob[k]; if (a && b) n11++; else if (a) n10++; else if (b) n01++; else n00++; }
+  const n = n11 + n10 + n01 + n00;
+  const den = Math.sqrt((n11 + n10) * (n01 + n00) * (n11 + n01) * (n10 + n00));
+  return { n, phi: den > 0 ? (n11 * n00 - n10 * n01) / den : null };
+}
+function pairRho(a, b) {
+  if (!a.gameId || !b.gameId || a.gameId !== b.gameId) return { rho: 0, src: 'Different games — independent' };
+  let def = S.corrSameGame, rel = 'Same game';
+  if (a.kind === 'player' && b.kind === 'player' && a.subjectId === b.subjectId) { def = S.corrSamePlayer; rel = 'Same player'; }
+  else if (a.team && b.team && a.team === b.team && !isGameLevel(a) && !isGameLevel(b)) { def = S.corrSameTeam; rel = 'Same team'; }
+  if (S.corrMode === 'empirical' && a.outcomes && b.outcomes) {
+    const r = phi(a.outcomes, b.outcomes);
+    if (r.n >= 8 && r.phi != null) {
+      const k = S.corrShrinkK; const rho = (r.n * r.phi + k * def) / (r.n + k);
+      return { rho, src: `${rel}: measured ${r.phi.toFixed(2)} over ${r.n} shared past games, shrunk toward ${def}` };
+    }
+  }
+  return { rho: def, src: `${rel}: default setting ${def}` };
+}
+function jointProb(ps, rho) {
+  let p = ps.reduce((s, x) => s * x, 1); const pInd = p; let f = 1;
+  for (let i = 0; i < ps.length; i++) for (let j = i + 1; j < ps.length; j++) {
+    const r = rho[i][j]; if (!r) continue;
+    f *= 1 + r * Math.sqrt((1 - ps[i]) * (1 - ps[j]) / (ps[i] * ps[j]));
+  }
+  p *= Math.max(0, f);
+  const upper = Math.min(...ps), lower = Math.max(0, ps.reduce((s, x) => s + x, 0) - (ps.length - 1));
+  return { pInd, factor: f, p: clamp(p, lower, upper), lower, upper };
+}
+function evalParlay(legs, overrideDec) {
+  const ps = legs.map(effP);
+  const rho = legs.map(() => legs.map(() => 0)); const pairs = [];
+  for (let i = 0; i < legs.length; i++) for (let j = i + 1; j < legs.length; j++) {
+    const r = pairRho(legs[i], legs[j]); rho[i][j] = rho[j][i] = r.rho;
+    if (legs[i].gameId === legs[j].gameId) pairs.push({ i, j, ...r });
+  }
+  const jp = jointProb(ps, rho);
+  const decProduct = legs.reduce((s, l) => s * l.odds, 1);
+  const dec = overrideDec || decProduct;
+  const implied = 1 / dec, ev = jp.p * dec - 1, edge = jp.p - implied;
+  const kellyRaw = dec > 1 ? (jp.p * dec - 1) / (dec - 1) : 0;
+  const kelly = Math.max(0, kellyRaw) * S.kellyFraction;
+  const stake = Math.min(S.bankroll * kelly, S.bankroll * S.maxStakePct / 100);
+  return { legs, ps, ...jp, dec, decProduct, implied, ev, edge, kellyRaw, kelly, stake, pairs };
+}
+function validCombo(legs) {
+  const perGame = {}, keys = new Set();
+  for (const l of legs) {
+    if (l.gameId) { perGame[l.gameId] = (perGame[l.gameId] || 0) + 1; if (perGame[l.gameId] > S.maxLegsPerGame) return false; }
+    const k = conflictKey(l); if (keys.has(k)) return false; keys.add(k);
+  }
+  return true;
+}
+function nCk(n, k) { if (k < 0 || k > n) return 0; let r = 1; for (let i = 1; i <= k; i++) r = r * (n - k + i) / i; return Math.round(r); }
+function generateParlays() {
+  const pool = LEGS.filter(l => l.include && l.odds > 1);
+  const locked = pool.filter(l => l.lock);
+  const free = pool.filter(l => !l.lock && effP(l) >= S.minLegProb);
+  const k = S.legsPerParlay, need = k - locked.length;
+  if (need < 0) return { error: `You locked ${locked.length} legs but parlays are set to ${k} legs.` };
+  if (!validCombo(locked)) return { error: 'Your locked legs conflict with each other (same market/subject, or too many from one game).' };
+  const count = nCk(free.length, need);
+  if (count > 400000) return { error: `That's ${count.toLocaleString()} combinations — raise "Min leg probability" or untick some legs.` };
+  const key = { ev: r => r.ev, edge: r => r.edge, prob: r => r.p, kelly: r => r.kelly }[S.sortBy] || (r => r.ev);
+  let out = []; let checked = 0;
+  const idx = [];
+  const rec = (start) => {
+    if (idx.length === need) {
+      checked++;
+      const legs = locked.concat(idx.map(i => free[i]));
+      if (!validCombo(legs)) return;
+      const r = evalParlay(legs);
+      if (r.ev * 100 < S.minEV || r.edge * 100 < S.minEdge) return;
+      out.push(r);
+      if (out.length > S.maxResults * 5) { out.sort((a, b) => key(b) - key(a)); out = out.slice(0, S.maxResults); }
+      return;
+    }
+    for (let i = start; i < free.length; i++) { idx.push(i); rec(i + 1); idx.pop(); }
+  };
+  rec(0);
+  out.sort((a, b) => key(b) - key(a));
+  return { results: out.slice(0, S.maxResults), checked, pool: pool.length, free: free.length, locked: locked.length };
+}
+
+/* =====================================================================
+   UI
+   ===================================================================== */
+const state = { tab: 'games', date: todayStr(), games: [], gameSel: LS.get('pv_gameSel', null), ctx: null, scan: null, scanSeq: 0, tmLast: null, results: null, evalRes: null };
+let V;
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('on'), 2200); }
+function openModal(html) { $('#modalBody').innerHTML = html; $('#modal').hidden = false; }
+function closeModal() { $('#modal').hidden = true; $('#modalBody').innerHTML = ''; }
+function setTab(t) {
+  state.tab = t;
+  document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
+  ({ games: viewGames, game: viewGame, legs: viewLegs, parlays: viewParlays, tracker: viewTracker, settings: viewSettings })[t]();
+  window.scrollTo(0, 0);
+}
+function evCell(ev) { return ev == null ? '–' : `<span class="${ev > 0 ? 'good' : 'bad'}">${(ev * 100).toFixed(1)}%</span>`; }
+function edgeCell(e) { return e == null ? '–' : `<span class="${e > 0 ? 'good' : 'bad'}">${e > 0 ? '+' : ''}${(e * 100).toFixed(1)}</span>`; }
+
+/* ---------- Games ---------- */
+async function viewGames() {
+  V.innerHTML = `<div class="card"><h2>Games</h2><div class="row">
+    <label class="f">Date<input type="date" id="gDate" value="${state.date}"></label>
+    <button class="b p" data-act="loadGames">Load games</button></div>
+    <p class="small muted">Stats come from the NHL's public API. bet365 prices are typed in by you on each leg.</p></div>
+    <div id="gList"><div class="card muted">Loading…</div></div>`;
+  loadGames();
+}
+async function loadGames() {
+  const el = $('#gList'); if (!el) return;
+  el.innerHTML = '<div class="card muted">Loading…</div>';
+  try {
+    const d = await api(`v1/schedule/${state.date}`, 300000);
+    const wk = (d.gameWeek || []).find(w => w.date === state.date);
+    const games = wk?.games || [];
+    state.games = games.map(g => ({ id: g.id, date: state.date, season: g.season, type: g.gameType, state: g.gameState, start: g.startTimeUTC,
+      home: g.homeTeam.abbrev, away: g.awayTeam.abbrev,
+      homeName: `${g.homeTeam.placeName?.default || ''} ${g.homeTeam.commonName?.default || ''}`.trim(),
+      awayName: `${g.awayTeam.placeName?.default || ''} ${g.awayTeam.commonName?.default || ''}`.trim(),
+      hs: g.homeTeam.score, as: g.awayTeam.score }));
+    if (!state.games.length) { el.innerHTML = '<div class="card muted">No NHL games on this date.</div>'; return; }
+    el.innerHTML = state.games.map(g => `<div class="card game"><div>
+      <div><b>${esc(g.away)}</b> @ <b>${esc(g.home)}</b> <span class="muted small">${esc(g.awayName)} at ${esc(g.homeName)}</span></div>
+      <div class="small muted">${new Date(g.start).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })} · ${esc(g.state)}${g.type !== 2 ? ' · ' + (g.type === 3 ? 'playoffs' : 'preseason') : ''}${g.hs != null ? ` · ${g.as}-${g.hs}` : ''}</div></div>
+      <button class="b p" data-act="openGame" data-id="${g.id}">Analyze</button></div>`).join('');
+  } catch (e) { el.innerHTML = `<div class="card bad">${esc(e.message)}</div>`; }
+}
+
+/* ---------- Game ---------- */
+async function viewGame() {
+  const g = state.gameSel;
+  if (!g) { V.innerHTML = '<div class="card muted">Pick a game on the Games tab.</div>'; return; }
+  V.innerHTML = `<div class="card"><h2>${esc(g.away)} @ ${esc(g.home)} <span class="muted small">${esc(g.date)}</span></h2><div id="gProg" class="progress small">Loading…</div></div><div id="gBody"></div>`;
+  try {
+    const ctx = await loadCtx(g, m => { const p = $('#gProg'); if (p) p.textContent = m; });
+    state.ctx = ctx;
+    if (state.tab !== 'game' || state.gameSel?.id !== g.id) return;
+    $('#gProg').textContent = '';
+    renderGameBody(ctx);
+  } catch (e) { const p = $('#gProg'); if (p) p.innerHTML = `<span class="bad">${esc(e.message)}</span>`; }
+}
+function renderGameBody(ctx) {
+  const H = ctx.standings[ctx.home], A = ctx.standings[ctx.away], tm = ctx.tm;
+  const rowsDef = [
+    ['Record', s => `${s.wins}-${s.losses}-${s.otLosses}`],
+    ['GF / game', s => fx(s.goalFor / s.gamesPlayed)],
+    ['GA / game', s => fx(s.goalAgainst / s.gamesPlayed)],
+    ['Home GF–GA / game', s => s.homeGamesPlayed ? `${fx(s.homeGoalsFor / s.homeGamesPlayed)} – ${fx(s.homeGoalsAgainst / s.homeGamesPlayed)} (${s.homeGamesPlayed} gp)` : '–'],
+    ['Road GF–GA / game', s => s.roadGamesPlayed ? `${fx(s.roadGoalsFor / s.roadGamesPlayed)} – ${fx(s.roadGoalsAgainst / s.roadGamesPlayed)} (${s.roadGamesPlayed} gp)` : '–'],
+    ['Last 10', s => `${s.l10Wins}-${s.l10Losses}-${s.l10OtLosses} · GF ${s.l10GoalsFor} GA ${s.l10GoalsAgainst}`],
+    ['Streak', s => `${s.streakCode || ''}${s.streakCount || ''}`],
+  ];
+  let t = `<div class="tw"><table><tr><th></th><th class="n">${ctx.away} (road)</th><th class="n">${ctx.home} (home)</th></tr>`;
+  if (H && A) for (const [lab, f] of rowsDef) t += `<tr><td>${lab}</td><td class="n">${f(A)}</td><td class="n">${f(H)}</td></tr>`;
+  const bA = ctx.boxStats[ctx.away], bH = ctx.boxStats[ctx.home];
+  t += `<tr><td>Shots for–against / game</td><td class="n">${bA ? `${fx(bA.sf, 1)} – ${fx(bA.sa, 1)} (last ${bA.n})` : '–'}</td><td class="n">${bH ? `${fx(bH.sf, 1)} – ${fx(bH.sa, 1)} (last ${bH.n})` : '–'}</td></tr>`;
+  if (!tm.error) t += `<tr><td><b>Model expected goals</b></td><td class="n"><b>${fx(tm.lA)}</b></td><td class="n"><b>${fx(tm.lH)}</b></td></tr>`;
+  t += '</table></div>';
+  t += `<p class="small muted">League average ${fx(ctx.league.gpg)} goals per team per game (from standings).${ctx.shotBase ? ` Shot baseline ${fx(ctx.shotBase, 1)} per team per game, estimated from the ${ctx.home} and ${ctx.away} box scores loaded.` : ''}${tm.error ? ` <span class="warn">${esc(tm.error)}</span>` : ''}</p>`;
+
+  const meet = tm.meet || [];
+  let mh = meet.length ? `<div class="tw"><table><tr><th>Date</th><th>Result</th><th>Ended</th></tr>${meet.map(g => `<tr><td>${g.date}</td><td>${g.away} ${g.as} @ ${g.home} ${g.hs}</td><td>${g.last}</td></tr>`).join('')}</table></div>` : '<p class="muted small">No meetings in the chosen head-to-head window.</p>';
+
+  const tmOpts = Object.entries(TM).map(([k, m]) => `<option value="${k}">${m.label}</option>`).join('');
+  const pmOpts = Object.entries(PM).map(([k, m]) => `<option value="${k}">${m.label}</option>`).join('');
+
+  $('#gBody').innerHTML = `
+  <div class="card"><h2>Team comparison</h2>${t}</div>
+  <div class="card"><h2>Player props</h2>
+    <div class="row">
+      <label class="f">Market<select id="pbMarket">${pmOpts}</select></label>
+      <label class="f" id="pbLineW">Line<input id="pbLine" type="number" step="0.5" value="2.5"></label>
+      <label class="f" id="pbSideW">Side<select id="pbSide"><option value="over">Over</option><option value="under">Under</option></select></label>
+      <label class="f">Team<select id="pbTeam"><option value="both">Both</option><option value="${ctx.away}">${ctx.away}</option><option value="${ctx.home}">${ctx.home}</option></select></label>
+      <label class="f" id="pbPosW">Position<select id="pbPos"><option value="all">All skaters</option><option value="F">Forwards</option><option value="D">Defence</option></select></label>
+      <button class="b p" data-act="pbScan">Scan players</button>
+    </div>
+    <p class="small muted">Scans everyone on both current rosters. Type bet365's price beside a player to see the edge, then add it to your leg pool. Goals Over 0.5 = anytime goalscorer.</p>
+    <div id="pbOut"></div>
+  </div>
+  <div class="card"><h2>Game lines &amp; team markets</h2>
+    <div class="row">
+      <label class="f">Market<select id="tmMarket">${tmOpts}</select></label>
+      <label class="f" id="tmTeamW">Team<select id="tmTeam"><option value="${ctx.away}">${ctx.away}</option><option value="${ctx.home}">${ctx.home}</option></select></label>
+      <label class="f" id="tmSideW">Side<select id="tmSide"></select></label>
+      <label class="f" id="tmLineW">Line<input id="tmLine" type="number" step="0.5"></label>
+      <button class="b p" data-act="tmCalc">Calculate</button>
+    </div>
+    <div id="tmOut"></div>
+  </div>
+  <div class="card"><h2>Head-to-head meetings</h2>${mh}</div>`;
+  syncTmForm(); syncPbForm();
+  if (state.scan && state.scan.gameId === ctx.game.id) renderScan();
+}
+function syncTmForm() {
+  const mk = $('#tmMarket')?.value; if (!mk) return; const M = TM[mk];
+  $('#tmTeamW').style.display = M.team ? '' : 'none';
+  $('#tmLineW').style.display = (M.ou || mk === 'spread') ? '' : 'none';
+  const side = $('#tmSide');
+  let opts = [];
+  if (M.ou) opts = [['over', 'Over'], ['under', 'Under']];
+  else if (M.yn) opts = [['yes', 'Yes'], ['no', 'No']];
+  else if (M.sides) opts = M.sides;
+  side.innerHTML = opts.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+  $('#tmSideW').style.display = opts.length ? '' : 'none';
+  if (M.line != null) $('#tmLine').value = M.line;
+}
+function syncPbForm() {
+  const mk = $('#pbMarket')?.value; if (!mk) return; const M = PM[mk];
+  $('#pbLine').value = M.line;
+  $('#pbLineW').style.display = M.first ? 'none' : '';
+  $('#pbSideW').style.display = M.first ? 'none' : '';
+  $('#pbPosW').style.display = M.goalie ? 'none' : '';
+}
+
+/* team market calc */
+function tmCalc() {
+  const ctx = state.ctx; if (!ctx) return;
+  const mk = $('#tmMarket').value, M = TM[mk];
+  const spec = { market: mk, team: M.game ? ctx.home : $('#tmTeam').value, side: $('#tmSide').value || 'win', line: (M.ou || mk === 'spread') ? +$('#tmLine').value : null };
+  if (mk === 'reg3' && spec.side === 'draw') spec.team = ctx.home;
+  const res = analyzeTeam(ctx, spec);
+  state.tmLast = { spec, res };
+  const out = $('#tmOut');
+  if (res.error) { out.innerHTML = `<p class="bad">${esc(res.error)}</p>`; return; }
+  const tmp = { kind: 'team', market: mk, team: spec.team, side: res.side, line: spec.line, game: gameMini(ctx.game) };
+  out.innerHTML = `<div class="leg" style="margin-top:10px"><div class="t">${esc(legLabel(tmp))}</div>
+    <div class="big"><div><span>Probability</span><b>${pct(res.p)}</b></div><div><span>Fair odds</span><b>${fmtOdds(1 / res.p)}</b></div><div><span>Model</span><b>${pct(res.pModel)}</b></div>${res.pEmpRaw != null ? `<div><span>History hit rate</span><b>${res.hits}/${res.decided}</b></div>` : ''}${res.push > 0.0005 ? `<div><span>Push</span><b>${pct(res.push)}</b></div>` : ''}</div>
+    <div class="row"><label class="f">bet365 odds<input id="tmOdds" class="odds" placeholder="${S.oddsFormat === 'decimal' ? '2.10' : '+110'}"></label>
+    <label class="f">Other side odds (optional)<input id="tmOther" class="odds"></label>
+    <span id="tmEdge" class="small"></span>
+    <button class="b" data-act="tmDetail">Full breakdown</button><button class="b p" data-act="tmAdd">Add to leg pool</button></div></div>`;
+}
+function tmEdgeUpdate() {
+  const r = state.tmLast?.res; if (!r) return;
+  const o = parseOdds($('#tmOdds').value), oo = parseOdds($('#tmOther').value);
+  const l = { p: r.p, push: r.push, odds: o, oddsOther: oo, adj: 0 };
+  const e = legEV(l);
+  $('#tmEdge').innerHTML = o ? `Implied ${pct(e.implied)}${e.noVig != null ? ` · no-vig ${pct(e.noVig)}` : ''} · edge ${edgeCell(e.edge)} pts · EV ${evCell(e.ev)}` : '';
+}
+function tmAdd() {
+  const { spec, res } = state.tmLast || {}; if (!res || res.error) return;
+  const odds = parseOdds($('#tmOdds').value);
+  if (!odds) { toast('Enter bet365 odds first'); return; }
+  const leg = makeLeg(state.ctx, res, { kind: 'team', market: spec.market, team: spec.team, side: res.side, line: spec.line, odds, oddsOther: parseOdds($('#tmOther').value) });
+  LEGS.push(leg); saveLegs(); toast('Added: ' + legLabel(leg));
+}
+
+/* player prop board */
+async function pbScan() {
+  const ctx = state.ctx; if (!ctx) return;
+  const mk = $('#pbMarket').value, M = PM[mk];
+  const line = M.first ? null : +$('#pbLine').value, side = M.first ? 'yes' : $('#pbSide').value;
+  const tf = $('#pbTeam').value, pf = $('#pbPos').value;
+  let players = ctx.players.filter(p => M.goalie ? p.pos === 'G' : p.pos !== 'G');
+  if (tf !== 'both') players = players.filter(p => p.team === tf);
+  if (!M.goalie && pf !== 'all') players = players.filter(p => pf === 'D' ? p.pos === 'D' : p.pos !== 'D');
+  if (!players.length) { $('#pbOut').innerHTML = '<p class="muted">No players found on the current rosters.</p>'; return; }
+  const seq = ++state.scanSeq; let done = 0; const rows = [];
+  $('#pbOut').innerHTML = `<p class="progress">Scanning 0/${players.length}…</p>`;
+  await Promise.all(players.map(async pl => {
+    let res; try { res = await analyzePlayer(ctx, pl, mk, line, side); } catch (e) { res = { error: e.message }; }
+    rows.push({ pl, res, odds: null }); done++;
+    if (seq === state.scanSeq) { const pr = $('#pbOut .progress'); if (pr) pr.textContent = `Scanning ${done}/${players.length}…`; }
+  }));
+  if (seq !== state.scanSeq) return;
+  rows.sort((a, b) => (b.res.p || -1) - (a.res.p || -1));
+  state.scan = { gameId: ctx.game.id, mk, line, side, rows };
+  renderScan();
+}
+function renderScan() {
+  const sc = state.scan; const M = PM[sc.mk]; const el = $('#pbOut'); if (!el) return;
+  const title = M.first ? 'First goalscorer' : `${cap(sc.side)} ${sc.line} ${M.label.toLowerCase()}`;
+  let h = `<p class="small"><b>${esc(title)}</b> · ${sc.rows.length} players · sorted by probability</p><div class="tw"><table><tr>
+    <th>Player</th><th>Tm</th><th class="n">GP</th><th class="n">Avg L${S.winMid}</th><th class="n">Hit L${S.winLong}</th><th class="n">vs opp</th><th class="n">Model</th><th class="n">Final</th><th class="n">Fair</th><th>bet365</th><th class="n">Edge</th><th class="n">EV</th><th></th></tr>`;
+  sc.rows.forEach((r, i) => {
+    const s = r.res;
+    if (s.error) { h += `<tr><td>${esc(r.pl.name)}</td><td>${r.pl.team}</td><td colspan="11" class="muted small">${esc(s.error)}</td></tr>`; return; }
+    const mid = s.rows.find(x => x.label === `Last ${S.winMid}`), lng = s.rows.find(x => x.label === `Last ${S.winLong}`);
+    const h2 = s.comps.find(c => c.key === 'h2h');
+    h += `<tr><td>${esc(r.pl.name)} <span class="muted small">${esc(r.pl.pos)}</span>${s.lowSample ? ' <span class="warn small">small sample</span>' : ''}</td><td>${r.pl.team}</td>
+      <td class="n">${s.n}</td><td class="n">${fx(mid?.avg)}</td><td class="n">${M.first ? '–' : (lng ? `${lng.hits}/${lng.dec}` : '–')}</td>
+      <td class="n">${h2 ? `${fx(h2.raw)} (${h2.n})` : '–'}</td><td class="n">${pct(s.pModel)}</td><td class="n"><b>${pct(s.p)}</b></td><td class="n">${fmtOdds(1 / s.p)}</td>
+      <td><input class="odds sm" data-scanodds="${i}" value="${r.odds ? oddsInputVal(r.odds) : ''}"></td>
+      <td class="n" id="se${i}"></td><td class="n" id="sv${i}"></td>
+      <td><button class="b s" data-act="scanDetail" data-i="${i}">Details</button> <button class="b s p" data-act="scanAdd" data-i="${i}">Add</button></td></tr>`;
+  });
+  el.innerHTML = h + '</table></div>';
+  sc.rows.forEach((r, i) => { if (r.odds) scanEdge(i); });
+}
+function scanEdge(i) {
+  const r = state.scan.rows[i]; if (!r || r.res.error) return;
+  const e = legEV({ p: r.res.p, push: r.res.push, odds: r.odds, adj: 0 });
+  const a = $('#se' + i), b = $('#sv' + i);
+  if (a) a.innerHTML = r.odds ? edgeCell(e.edge) : ''; if (b) b.innerHTML = r.odds ? evCell(e.ev) : '';
+}
+function scanAdd(i) {
+  const r = state.scan.rows[i]; if (!r || r.res.error) return;
+  if (!r.odds) { toast('Type the bet365 odds in that row first'); return; }
+  const s = r.res;
+  const leg = makeLeg(state.ctx, s, { kind: 'player', market: state.scan.mk, subjectId: r.pl.id, subjectName: r.pl.name, pos: r.pl.pos, team: s.team, opp: s.opp, isHome: s.isHome, line: s.line, side: s.side, odds: r.odds, oddsOther: null });
+  LEGS.push(leg); saveLegs(); toast('Added: ' + legLabel(leg));
+}
+
+/* ---------- detail views ---------- */
+function barChart(vals, line) {
+  if (!vals.length) return '';
+  const n = vals.length, W = Math.max(320, n * 20), H = 110;
+  const max = Math.max(line == null ? 1 : line + 1, ...vals.map(v => v.v), 1); const bw = W / n;
+  let s = `<svg viewBox="0 0 ${W} ${H + 16}" width="100%" style="max-width:${W}px" role="img" aria-label="Recent games">`;
+  vals.forEach((v, i) => {
+    const h = (v.v / max) * H;
+    s += `<rect class="bar ${v.hit ? 'hit' : ''}" x="${i * bw + 2}" y="${H - h}" width="${Math.max(2, bw - 4)}" height="${Math.max(h, 1)}"><title>${esc(v.d)} ${esc(v.o || '')}: ${v.v}</title></rect><text x="${i * bw + bw / 2}" y="${H + 12}" font-size="9" fill="#8b949e" text-anchor="middle">${v.v}</text>`;
+  });
+  if (line != null) { const ly = H - (line / max) * H; s += `<line x1="0" x2="${W}" y1="${ly}" y2="${ly}" stroke="#f2c94c" stroke-dasharray="4 3"/>`; }
+  return s + '</svg>';
+}
+function playerDetailHTML(r) {
+  if (r.error) return `<p class="bad">${esc(r.error)}</p>`;
+  const M = PM[r.market];
+  const title = M.first ? 'first goalscorer' : `${r.side === 'over' ? 'Over' : 'Under'} ${r.line} ${M.label.toLowerCase()}`;
+  const statLine = M.first ? 0.5 : r.line, statSide = M.first ? 'over' : r.side;
+  let h = `<h2>${esc(r.name)} — ${esc(title)}</h2><p class="muted small">${r.team} ${r.isHome ? 'vs' : '@'} ${r.opp} · ${r.n} games in history window (${S.seasonsBack} season${S.seasonsBack > 1 ? 's' : ''})${r.lowSample ? ' · <span class="warn">small sample</span>' : ''}${M.src === 'box' ? ` · from the last ${S.boxDepth} ${r.team} box scores` : ''}</p>`;
+  h += `<div class="big"><div><span>Final probability</span><b>${pct(r.p)}</b></div><div><span>Fair odds</span><b>${fmtOdds(1 / r.p)}</b></div><div><span>Model</span><b>${pct(r.pModel)}</b></div>${r.pEmp != null ? `<div><span>Hit rate, shrunk</span><b>${pct(r.pEmp)}</b></div>` : ''}<div><span>Expected ${M.first ? 'goals' : M.label.toLowerCase()}</span><b>${fx(r.lambda)}</b></div>${r.push > 0.0005 ? `<div><span>Push chance</span><b>${pct(r.push)}</b></div>` : ''}</div>`;
+  h += `<h3>How the expected value was built</h3><div class="tw"><table><tr><th>Component</th><th class="n">Games</th><th class="n">Rate</th><th class="n">Weight</th></tr>`;
+  for (const c of r.comps) h += `<tr><td>${esc(c.label)}${c.raw != null ? ` <span class="muted">(raw ${fx(c.raw)})</span>` : ''}</td><td class="n">${c.n}</td><td class="n">${fx(c.rate)}</td><td class="n">${c.w}</td></tr>`;
+  h += `<tr><td><b>Blended rate</b> = Σ(rate × weight) ÷ Σ weight</td><td></td><td class="n"><b>${fx(r.blended)}</b></td><td></td></tr>`;
+  h += `<tr><td>Ice-time factor ${r.toiInfo ? `(last ${S.winShort}: ${fx(r.toiInfo.recent, 1)} min vs ${fx(r.toiInfo.all, 1)} avg; strength ${S.toiStrength})` : '(not applied)'}</td><td></td><td class="n">×${fx(r.toiF, 3)}</td><td></td></tr>`;
+  h += `<tr><td>Opponent factor ${r.oppRatio != null ? `(${OPP_LABEL[r.oppKey]} ${r.opp} = ${fx(r.oppRatio)}× baseline; strength ${S.oppStrength})` : '(not applied)'}</td><td></td><td class="n">×${fx(r.oppF, 3)}</td><td></td></tr>`;
+  h += `<tr><td><b>Expected value λ</b></td><td></td><td class="n"><b>${fx(r.lambda)}</b></td><td></td></tr></table></div>`;
+  if (M.first) {
+    const f = r.first;
+    h += `<p class="small">Game expected goals (team model) = <b>${fx(f.lt)}</b>. Player share = ${fx(r.lambda)} ÷ ${fx(f.lt)} = ${pct(f.share)}. Chance of at least one goal = 1 − e^(−${fx(f.lt)}) = ${pct(f.pAny)}.<br>First goalscorer = ${pct(f.share)} × ${pct(f.pAny)} = <b>${pct(r.p)}</b>. For reference, his anytime-goal estimate is ${pct(f.anytime)}.<br><span class="muted">Assumes goals arrive at steady rates through the game; doesn't use play-by-play first-goal history. Check bet365's rules for own goals and OT.</span></p>`;
+  } else {
+    h += `<p class="small">Distribution: ${r.disp > 1.0001 ? `negative binomial (variance ${fx(r.disp)}× mean, from a raw sample ratio of ${fx(r.rawDisp)}×)` : 'Poisson'} → model P = <b>${pct(r.pModel)}</b>.<br>
+      Hit rate: ${r.hits}/${r.decided} over the last ${S.winLong} games${r.pEmpRaw != null ? ` (${pct(r.pEmpRaw)})` : ''}, shrunk with ${S.shrinkK} prior games at the model value → ${pct(r.pEmp)}.<br>
+      Final = ${fx(1 - S.empWeight)} × ${pct(r.pModel)} + ${fx(S.empWeight)} × ${pct(r.pEmp)} = <b>${pct(r.p)}</b>.</p>`;
+  }
+  h += `<h3>Hit rates ${M.first ? '(anytime goal)' : ''}</h3><div class="tw"><table><tr><th>Sample</th><th class="n">Games</th><th class="n">Average</th><th class="n">Hit</th><th class="n">Rate</th></tr>${r.rows.map(x => `<tr><td>${esc(x.label)}</td><td class="n">${x.n}</td><td class="n">${fx(x.avg)}</td><td class="n">${x.hits}/${x.dec}</td><td class="n">${pct(x.rate)}</td></tr>`).join('')}</table></div>`;
+  const rec = r.recent.slice().reverse().map(x => ({ ...x, hit: legResult(x.v, statLine, statSide) === true }));
+  h += `<h3>Last ${r.recent.length} games (oldest → newest; green = hit, dashed = line)</h3>${barChart(rec, statLine)}`;
+  h += `<div class="tw"><table><tr><th>Date</th><th>Opp</th><th class="n">Value</th><th class="n">TOI</th></tr>${r.recent.map(x => `<tr><td>${x.d}</td><td>${x.h ? 'vs' : '@'} ${x.o}</td><td class="n">${x.v}</td><td class="n">${fx(x.t, 1)}</td></tr>`).join('')}</table></div>`;
+  h += `<h3>Every game vs ${r.opp} (last ${S.h2hSeasonsBack} seasons)</h3>` + (r.h2hGames.length ? `<div class="tw"><table><tr><th>Date</th><th>Venue</th><th class="n">Value</th><th class="n">TOI</th></tr>${r.h2hGames.map(x => `<tr><td>${x.d}</td><td>${x.h ? 'Home' : 'Road'}</td><td class="n">${x.v}</td><td class="n">${fx(x.t, 1)}</td></tr>`).join('')}</table></div>` : '<p class="muted small">None found.</p>');
+  if (!M.first) h += `<h3>Model distribution</h3><div class="tw"><table><tr><th>Value</th>${r.pmf.map((_, k) => `<th class="n">${k}</th>`).join('')}</tr><tr><td>P</td>${r.pmf.map(p => `<td class="n">${pct(p)}</td>`).join('')}</tr></table></div>`;
+  return h;
+}
+function teamDetailHTML(r, g) {
+  if (r.error) return `<p class="bad">${esc(r.error)}</p>`;
+  const lab = legLabel({ kind: 'team', market: r.market, team: r.team, side: r.side, line: r.line, game: g });
+  let h = `<h2>${esc(lab)}</h2><div class="big"><div><span>Final probability</span><b>${pct(r.p)}</b></div><div><span>Fair odds</span><b>${fmtOdds(1 / r.p)}</b></div><div><span>Model</span><b>${pct(r.pModel)}</b></div>${r.pEmp != null ? `<div><span>History, shrunk</span><b>${pct(r.pEmp)}</b></div>` : ''}${r.push > 0.0005 ? `<div><span>Push</span><b>${pct(r.push)}</b></div>` : ''}</div>`;
+  if (r.shots) {
+    const s = r.shots;
+    h += `<h3>Shots model</h3><div class="tw"><table>${s.comps.map(c => `<tr><td>${esc(c[0])}</td><td class="n">${fx(c[1], 1)}</td></tr>`).join('')}<tr><td><b>Expected shots</b> (average of matching for/against)</td><td class="n"><b>${fx(s.m, 1)}</b></td></tr></table></div>
+      <p class="small">Distribution: ${s.disp > 1.0001 ? `negative binomial (variance ${fx(s.disp)}× mean)` : 'Poisson'} → model ${pct(r.pModel)}. History ${r.hits}/${r.decided} → shrunk ${pct(r.pEmp)}. Final = ${fx(1 - S.empWeight)} × model + ${fx(S.empWeight)} × history = <b>${pct(r.p)}</b>.</p>
+      <h3>Box-score games used</h3><div class="tw"><table><tr><th>Date</th><th>Team</th><th>Opp</th><th class="n">Value</th><th>Result</th></tr>${s.games.map(x => `<tr><td>${x.date}</td><td>${x.X}</td><td>${x.opp}</td><td class="n">${x.v}</td><td>${x.r === null ? 'push' : x.r ? '<span class="good">hit</span>' : 'miss'}</td></tr>`).join('')}</table></div>`;
+    return h;
+  }
+  const t = r.tmInfo || (r.tm ? tmSummary(r.tm) : null);
+  if (t) {
+    const rr = (x, v) => x ? `${fx(x.overall)} overall · ${fx(x.vraw)} ${v} (${x.vgp} gp, shrunk ${fx(x.vr)}) · ${fx(x.l10)} last ${x.lgp} → <b>${fx(x.blended)}</b>` : '–';
+    h += `<h3>Goal model</h3><div class="tw"><table>
+      <tr><td>${g?.home || 'Home'} goals for</td><td class="wrap">${rr(t.hF, 'home')}</td></tr>
+      <tr><td>${g?.home || 'Home'} goals against</td><td class="wrap">${rr(t.hA, 'home')}</td></tr>
+      <tr><td>${g?.away || 'Away'} goals for</td><td class="wrap">${rr(t.aF, 'road')}</td></tr>
+      <tr><td>${g?.away || 'Away'} goals against</td><td class="wrap">${rr(t.aA, 'road')}</td></tr>
+      <tr><td>League average</td><td>${fx(t.lg)} per team per game</td></tr>
+      <tr><td>Expected goals before H2H</td><td>${g?.home} ${fx(t.base.lH)} = home GF × away GA ÷ league · ${g?.away} ${fx(t.base.lA)}</td></tr>
+      ${t.h2h ? `<tr><td>Head-to-head (${t.h2h.n} meetings)</td><td class="wrap">${g?.home} avg ${fx(t.h2h.tg)}, ${g?.away} avg ${fx(t.h2h.og)} → shrunk ${fx(t.h2h.sH)} / ${fx(t.h2h.sA)}, weight ${t.h2h.w}</td></tr>` : ''}
+      <tr><td><b>Final expected goals</b></td><td><b>${g?.home} ${fx(t.lH)} · ${g?.away} ${fx(t.lA)}</b></td></tr>
+      <tr><td>Regulation tie chance</td><td>${pct(t.draw)} (OT/SO split ${S.otHomeShare} home)</td></tr></table></div>
+      <h3>Most likely regulation scores</h3><div class="tw"><table><tr><th>${g?.away}–${g?.home}</th><th class="n">P</th></tr>${t.top.map(x => `<tr><td>${x.a}–${x.h}</td><td class="n">${pct(x.p)}</td></tr>`).join('')}</table></div>`;
+  }
+  if (r.firstTeam) h += `<p class="small">Team to score first = ${fx(r.firstTeam.lT)} ÷ ${fx(r.firstTeam.lt)} × (1 − e^(−${fx(r.firstTeam.lt)})) = <b>${pct(r.p)}</b>. Model only — first-goal history isn't loaded.</p>`;
+  else h += `<p class="small">Model ${pct(r.pModel)}. History ${r.hits}/${r.decided} over each team's last ${S.winLong} games → shrunk ${pct(r.pEmp)}. Final = ${fx(1 - S.empWeight)} × model + ${fx(S.empWeight)} × history = <b>${pct(r.p)}</b>.</p>`;
+  if (r.rows?.length) h += `<h3>Historical hit rates for this exact bet</h3><div class="tw"><table><tr><th>Sample</th><th class="n">Games</th><th class="n">Hit</th><th class="n">Rate</th></tr>${r.rows.map(x => `<tr><td>${esc(x.label)}</td><td class="n">${x.n}</td><td class="n">${x.hits}/${x.dec}</td><td class="n">${pct(x.rate)}</td></tr>`).join('')}</table></div>`;
+  if (r.recentGames?.length) h += `<h3>Recent games</h3><div class="tw"><table><tr><th>Date</th><th>Score</th><th>Ended</th><th>Result</th></tr>${r.recentGames.map(x => `<tr><td>${x.date}</td><td>${x.away} ${x.as} @ ${x.home} ${x.hs}</td><td>${x.last}</td><td>${x.r === 'W' ? '<span class="good">hit</span>' : x.r === 'P' ? 'push' : 'miss'}</td></tr>`).join('')}</table></div>`;
+  return h;
+}
+function legDetailHTML(l) {
+  const e = legEV(l);
+  let h = '';
+  if (l.kind === 'player') h = playerDetailHTML(l.details);
+  else if (l.kind === 'team') h = teamDetailHTML(l.details, l.game);
+  else h = `<h2>${esc(l.label)}</h2><p>Custom leg — probability entered by you: ${pct(l.p)}.</p>`;
+  h += `<h3>Against bet365</h3><p class="small">Odds ${fmtOdds(l.odds)} → implied ${pct(e.implied)}${e.noVig != null ? `, no-vig ${pct(e.noVig)}` : ''}. Your probability ${pct(e.p)}${l.adj ? ` (includes manual ${l.adj > 0 ? '+' : ''}${l.adj} pts)` : ''}. Edge ${edgeCell(e.edge)} pts. EV per $1 = ${pct(e.p)} × ${fx(l.odds)}${l.push ? ` + push ${pct(l.push)}` : ''} − 1 = ${evCell(e.ev)}.</p>
+    <p class="small muted">Calculated ${new Date(l.calcAt || l.created).toLocaleString()}.</p>`;
+  return h;
+}
+
+/* ---------- Leg pool ---------- */
+function viewLegs() {
+  const games = [...new Map(LEGS.filter(l => l.game).map(l => [l.gameId, l.game])).values()];
+  let h = `<div class="card"><h2>Leg pool (${LEGS.length})</h2>
+    <p class="small muted">"Use" puts a leg in the parlay generator. "Lock" forces it into every parlay. "Adj" adds or removes percentage points for news the stats can't see (injury, line change, goalie).</p>
+    <div class="row"><button class="b" data-act="recalcAll">Recalculate all with current settings</button><button class="b x" data-act="clearLegs">Clear pool</button></div><div id="recalcProg" class="progress small"></div></div>`;
+  if (!LEGS.length) h += '<div class="card muted">No legs yet. Open a game and add player props or game lines.</div>';
+  for (const l of LEGS) {
+    const e = legEV(l);
+    h += `<div class="leg"><div class="game"><div class="t">${esc(legLabel(l))}</div><div class="small muted">${l.game ? `${l.game.away}@${l.game.home} · ${l.game.date}` : 'No game'}</div></div>
+      <div class="small">Prob <b>${pct(e.p)}</b> · Fair ${fmtOdds(1 / e.p)} · bet365 ${fmtOdds(l.odds)} · Implied ${pct(e.implied)}${e.noVig != null ? ` · No-vig ${pct(e.noVig)}` : ''} · Edge ${edgeCell(e.edge)} · EV ${evCell(e.ev)}</div>
+      <div class="row" style="margin-top:6px">
+        <label class="chk"><input type="checkbox" data-leg="${l.id}" data-f="include" ${l.include ? 'checked' : ''}>Use</label>
+        <label class="chk"><input type="checkbox" data-leg="${l.id}" data-f="lock" ${l.lock ? 'checked' : ''}>Lock</label>
+        <label class="f">Odds<input class="odds sm" data-leg="${l.id}" data-f="odds" value="${oddsInputVal(l.odds)}"></label>
+        <label class="f">Other side<input class="odds sm" data-leg="${l.id}" data-f="oddsOther" value="${oddsInputVal(l.oddsOther)}"></label>
+        <label class="f">Adj (pts)<input class="sm" type="number" step="0.5" data-leg="${l.id}" data-f="adj" value="${l.adj || 0}"></label>
+        ${l.kind === 'custom' ? `<label class="f">Prob %<input class="sm" type="number" step="0.5" data-leg="${l.id}" data-f="pcustom" value="${fx(l.p * 100, 1)}"></label>` : ''}
+        <button class="b s" data-act="legDetail" data-id="${l.id}">Details</button>
+        ${l.kind !== 'custom' ? `<button class="b s" data-act="legRecalc" data-id="${l.id}">Recalc</button>` : ''}
+        <button class="b s x" data-act="legDel" data-id="${l.id}">Remove</button></div></div>`;
+  }
+  h += `<div class="card"><h2>Add a custom leg</h2><p class="small muted">For anything not modelled (period markets, race to X, exact score…). You supply the probability.</p>
+    <div class="row"><label class="f">Description<input id="cuLabel" placeholder="1st period Over 1.5"></label>
+    <label class="f">Game<select id="cuGame"><option value="">None / other</option>${games.concat(state.gameSel && !games.find(x => x.id === state.gameSel.id) ? [state.gameSel] : []).map(g => `<option value="${g.id}">${g.away}@${g.home} ${g.date}</option>`).join('')}</select></label>
+    <label class="f">Your probability %<input id="cuP" type="number" step="0.5"></label>
+    <label class="f">bet365 odds<input id="cuOdds" class="odds"></label>
+    <button class="b p" data-act="cuAdd">Add</button></div></div>`;
+  V.innerHTML = h;
+}
+function legById(id) { return LEGS.find(l => l.id === id); }
+async function recalcLeg(l) {
+  const ctx = await loadCtx(l.game);
+  if (l.kind === 'player') {
+    const pl = ctx.players.find(p => p.id === l.subjectId && p.team === l.team) || { id: l.subjectId, name: l.subjectName, team: l.team, pos: l.pos };
+    applyRes(l, await analyzePlayer(ctx, Object.assign({}, pl, { team: l.team }), l.market, l.line, l.side));
+  } else if (l.kind === 'team') applyRes(l, analyzeTeam(ctx, { market: l.market, team: l.team, side: l.side, line: l.line }));
+}
+
+/* ---------- Parlays ---------- */
+function viewParlays() {
+  const pool = LEGS.filter(l => l.include && l.odds > 1);
+  const quick = ['legsPerParlay', 'minLegProb', 'minEV', 'minEdge', 'maxLegsPerGame', 'sortBy'];
+  let h = `<div class="card"><h2>Find value parlays</h2>
+    <p class="small muted">Builds every combination of the legs ticked "Use" in your pool (${pool.length} with odds), applies same-game correlation, and ranks by your choice. More options in Settings.</p>
+    <div class="row">${quick.map(k => settingInput(SCHEMA.find(s => s.key === k), true)).join('')}</div>
+    <div class="row" style="margin-top:8px"><button class="b p" data-act="genParlays">Generate</button><button class="b" data-act="evalLocked">Evaluate locked legs as one parlay</button></div></div><div id="parOut"></div>`;
+  V.innerHTML = h;
+  if (state.results) renderResults();
+}
+function renderResults() {
+  const r = state.results; const el = $('#parOut'); if (!el) return;
+  if (r.error) { el.innerHTML = `<div class="card bad">${esc(r.error)}</div>`; return; }
+  let h = `<div class="card"><p class="small muted">Checked ${r.checked.toLocaleString()} combinations from ${r.free} eligible + ${r.locked} locked legs. Showing ${r.results.length}.</p>`;
+  if (!r.results.length) h += '<p>No parlays passed your filters. Try lowering Min EV or Min leg probability.</p>';
+  else {
+    h += `<div class="tw"><table><tr><th>#</th><th>Legs</th><th class="n">Hit %</th><th class="n">Odds</th><th class="n">Implied</th><th class="n">Edge</th><th class="n">EV</th><th class="n">Stake</th><th></th></tr>`;
+    r.results.forEach((x, i) => {
+      h += `<tr><td>${i + 1}</td><td class="wrap">${x.legs.map(l => `${esc(legLabel(l))} <span class="muted small">${pct(effP(l), 0)} @ ${fmtOdds(l.odds)}</span>`).join('<br>')}${x.pairs.length ? '<br><span class="pill">same game</span>' : ''}</td>
+        <td class="n">${pct(x.p)}</td><td class="n">${fmtOdds(x.dec)}</td><td class="n">${pct(x.implied)}</td><td class="n">${edgeCell(x.edge)}</td><td class="n">${evCell(x.ev)}</td><td class="n">$${fx(x.stake)}</td>
+        <td><button class="b s" data-act="parDetail" data-i="${i}">Details</button></td></tr>`;
+    });
+    h += '</table></div>';
+  }
+  el.innerHTML = h + '</div>';
+}
+function parlayDetailHTML(x, idx) {
+  let h = `<h2>${x.legs.length}-leg parlay</h2><div class="tw"><table><tr><th>Leg</th><th class="n">Your %</th><th class="n">bet365</th><th class="n">Implied</th></tr>${x.legs.map(l => `<tr><td class="wrap">${esc(legLabel(l))}</td><td class="n">${pct(effP(l))}</td><td class="n">${fmtOdds(l.odds)}</td><td class="n">${pct(1 / l.odds)}</td></tr>`).join('')}</table></div>`;
+  h += `<h3>Hit probability</h3><p class="small">Independent: ${x.ps.map(p => pct(p)).join(' × ')} = ${pct(x.pInd, 2)}.`;
+  if (x.pairs.length) {
+    h += `<br>Same-game pairs:</p><div class="tw"><table><tr><th>Pair</th><th class="n">ρ</th><th>Source</th></tr>${x.pairs.map(pr => `<tr><td class="wrap">${esc(legLabel(x.legs[pr.i]))} + ${esc(legLabel(x.legs[pr.j]))}</td><td class="n">${fx(pr.rho)}</td><td class="wrap small">${esc(pr.src)}</td></tr>`).join('')}</table></div>
+      <p class="small">Correlation factor ×${fx(x.factor, 3)} (pairwise approximation: Π[1 + ρ·√((1−pᵢ)(1−pⱼ)/(pᵢpⱼ))]), kept within the possible range ${pct(x.lower, 2)}–${pct(x.upper, 2)} → <b>${pct(x.p, 2)}</b>.`;
+  } else h += ` No same-game legs, so legs are treated as independent → <b>${pct(x.p, 2)}</b>.`;
+  h += `</p><h3>Price</h3><p class="small">Leg odds multiplied: ${x.legs.map(l => fx(l.odds)).join(' × ')} = ${fx(x.decProduct)} (${fmtOdds(x.decProduct)}). bet365 can price same-game parlays differently — type the real parlay price below.</p>
+    <div class="row"><label class="f">Actual bet365 parlay odds<input id="pdOdds" class="odds" value="${x.dec !== x.decProduct ? oddsInputVal(x.dec) : ''}"></label><button class="b" data-act="pdReprice" data-i="${idx}">Reprice</button></div>
+    <p class="small">Implied ${pct(x.implied, 2)} · Edge ${edgeCell(x.edge)} pts · EV = ${pct(x.p, 2)} × ${fx(x.dec)} − 1 = ${evCell(x.ev)}<br>
+    Kelly = (p·D − 1)/(D − 1) = ${pct(x.kellyRaw, 2)} × fraction ${S.kellyFraction} = ${pct(x.kelly, 2)} of bankroll, capped at ${S.maxStakePct}% → stake <b>$${fx(x.stake)}</b>.</p>
+    <div class="row"><label class="f">Stake $<input id="pdStake" type="number" step="0.5" value="${fx(x.stake)}"></label><button class="b p" data-act="pdSave" data-i="${idx}">Save to tracker</button></div>`;
+  return h;
+}
+
+/* ---------- Tracker ---------- */
+function viewTracker() {
+  const settled = TRACK.filter(t => ['won', 'lost', 'push'].includes(t.status));
+  const decided = settled.filter(t => t.status !== 'push');
+  const staked = settled.reduce((s, t) => s + (+t.stake || 0), 0);
+  const profit = settled.reduce((s, t) => s + (t.status === 'won' ? t.stake * (t.dec - 1) : t.status === 'lost' ? -t.stake : 0), 0);
+  const wins = decided.filter(t => t.status === 'won').length;
+  const expW = decided.reduce((s, t) => s + t.p, 0);
+  const withClose = settled.filter(t => t.closing > 1);
+  const clv = withClose.length ? mean(withClose.map(t => t.dec / t.closing - 1)) : null;
+  let h = `<div class="card"><h2>Tracker</h2><div class="big">
+    <div><span>Bets settled</span><b>${settled.length}</b></div><div><span>Won / decided</span><b>${wins}/${decided.length}</b></div>
+    <div><span>Model expected wins</span><b>${fx(expW, 1)}</b></div><div><span>Profit</span><b class="${profit >= 0 ? 'good' : 'bad'}">$${fx(profit)}</b></div>
+    <div><span>ROI</span><b>${staked ? pct(profit / staked) : '–'}</b></div><div><span>Avg price vs close</span><b>${clv == null ? '–' : pct(clv)}</b></div></div>
+    <p class="small muted">If actual wins keep landing well below the model's expected wins, the model is too optimistic — raise the hit-rate weight or shrink settings. "Price vs close" compares your odds to the closing odds you enter; consistently positive is a good sign.</p>
+    <div class="row"><button class="b" data-act="exportAll">Export all data</button><label class="b">Import<input type="file" id="importFile" accept="application/json" hidden></label></div></div>`;
+  if (!TRACK.length) h += '<div class="card muted">No bets saved yet. Save one from a parlay\'s Details.</div>';
+  for (const t of TRACK.slice().reverse()) {
+    h += `<div class="leg"><div class="game"><div class="t">${t.legs.length}-leg · ${fmtOdds(t.dec)} · $${fx(t.stake)}</div><div class="small muted">${new Date(t.created).toLocaleDateString()}</div></div>
+      <div class="small">${t.legs.map(l => `${esc(l.label)} <span class="muted">${pct(l.p, 0)} @ ${fmtOdds(l.odds)}</span>`).join('<br>')}</div>
+      <div class="small">Model ${pct(t.p)} · EV ${evCell(t.p * t.dec - 1)}</div>
+      <div class="row" style="margin-top:6px"><label class="f">Result<select data-tr="${t.id}" data-f="status">${['open', 'won', 'lost', 'push', 'void'].map(s => `<option ${t.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></label>
+      <label class="f">Closing odds<input class="odds sm" data-tr="${t.id}" data-f="closing" value="${oddsInputVal(t.closing)}"></label>
+      <button class="b s x" data-act="trDel" data-id="${t.id}">Delete</button></div></div>`;
+  }
+  V.innerHTML = h;
+}
+
+/* ---------- Settings ---------- */
+function settingInput(s, compact) {
+  const v = S[s.key]; let input;
+  if (s.type === 'select') input = `<select data-set="${s.key}">${s.options.map(([a, b]) => `<option value="${a}" ${v === a ? 'selected' : ''}>${b}</option>`).join('')}</select>`;
+  else if (s.type === 'bool') return `<label class="chk"><input type="checkbox" data-set="${s.key}" ${v ? 'checked' : ''}>${esc(s.label)}</label>${!compact && s.help ? `<div class="help">${esc(s.help)}</div>` : ''}`;
+  else if (s.type === 'text') input = `<input data-set="${s.key}" value="${esc(v)}" style="width:100%">`;
+  else input = `<input type="number" data-set="${s.key}" value="${v}" min="${s.min}" max="${s.max}" step="${s.step}">`;
+  return `<label class="f">${esc(s.label)}${input}</label>${!compact && s.help ? `<div class="help">${esc(s.help)}</div>` : ''}`;
+}
+const WORKER_CODE = `const UPSTREAM = 'https://api-web.nhle.com/';
+function cors(){return{'Access-Control-Allow-Origin':'*','Access-Control-Allow-Methods':'GET, OPTIONS','Access-Control-Allow-Headers':'Content-Type'};}
+export default {
+  async fetch(request) {
+    if (request.method === 'OPTIONS') return new Response(null, { headers: cors() });
+    if (request.method !== 'GET') return new Response('Method not allowed', { status: 405, headers: cors() });
+    const url = new URL(request.url);
+    const path = url.pathname.replace(/^\\/+/, '');
+    if (!/^v1\\/[A-Za-z0-9\\-\\/]+$/.test(path)) return new Response('Bad path', { status: 400, headers: cors() });
+    const up = await fetch(UPSTREAM + path + url.search, { headers: { Accept: 'application/json' }, cf: { cacheTtl: 120, cacheEverything: true } });
+    const h = new Headers(up.headers); for (const [k, v] of Object.entries(cors())) h.set(k, v);
+    return new Response(up.body, { status: up.status, headers: h });
+  },
+};`;
+function viewSettings() {
+  let h = '', open = false;
+  for (const s of SCHEMA) {
+    if (s.group) { if (open) h += '</div></div>'; h += `<div class="card"><h2>${esc(s.group)}</h2><div class="setgrid">`; open = true; continue; }
+    h += `<div>${settingInput(s)}</div>`;
+  }
+  if (open) h += '</div></div>';
+  h += `<div class="card"><h2>Connection test</h2><div class="row"><button class="b" data-act="testConn">Test NHL data connection</button><span id="connOut" class="small"></span></div></div>
+  <div class="card"><h2>Proxy setup (free)</h2><p class="small">Browsers sometimes block pages from calling the NHL API directly. If the test above fails, make a free Cloudflare Worker that passes the data through:</p>
+  <ol class="small"><li>Sign in at dash.cloudflare.com → Workers &amp; Pages → Create → Create Worker → Deploy.</li><li>Edit code → replace everything with the code below → Deploy.</li><li>Copy the worker's URL into "Proxy URL" above and set Connection mode to Auto.</li></ol>
+  <pre>${esc(WORKER_CODE)}</pre><button class="b s" data-act="copyWorker">Copy code</button></div>
+  <div class="card"><h2>Data</h2><div class="row"><button class="b" data-act="resetSettings">Reset settings to defaults</button><button class="b" data-act="clearCache">Clear cached box scores</button><button class="b" data-act="exportAll">Export all data</button></div></div>
+  <div class="card"><h2>Notes</h2><p class="small muted">Stats: NHL public web API (api-web.nhle.com), which is unofficial and undocumented, so fields can change. Odds: typed in by you; no free bet365 odds feed is used. Probabilities are model estimates, not guarantees — check results in the Tracker before trusting them.</p></div>`;
+  V.innerHTML = h;
+}
+async function testConn() {
+  const el = $('#connOut'); el.textContent = 'Testing…';
+  const lines = [];
+  try { await rawFetch(NHL + 'v1/standings/now'); lines.push('<span class="good">Direct: works</span>'); directWorks = true; }
+  catch (e) { lines.push(e.status ? `<span class="bad">Direct: HTTP ${e.status}</span>` : '<span class="bad">Direct: blocked by browser (CORS) or offline</span>'); }
+  const proxy = (S.proxyUrl || '').trim().replace(/\/+$/, '');
+  if (proxy) { try { await rawFetch(proxy + '/v1/standings/now'); lines.push('<span class="good">Proxy: works</span>'); } catch (e) { lines.push(`<span class="bad">Proxy: ${esc(e.message)}</span>`); } }
+  else lines.push('<span class="muted">Proxy: not set</span>');
+  el.innerHTML = lines.join(' · ');
+}
+
+/* ---------- events ---------- */
+function onClick(ev) {
+  const tabBtn = ev.target.closest('#nav button');
+  if (tabBtn) { setTab(tabBtn.dataset.tab); return; }
+  if (ev.target.id === 'modal') { closeModal(); return; }
+  const b = ev.target.closest('[data-act]'); if (!b) return;
+  const act = b.dataset.act, id = b.dataset.id, i = +b.dataset.i;
+  switch (act) {
+    case 'closeModal': closeModal(); break;
+    case 'loadGames': state.date = $('#gDate').value || todayStr(); loadGames(); break;
+    case 'openGame': { const g = state.games.find(x => x.id === +id); if (!g) break; state.gameSel = gameMini(g); state.scan = null; state.tmLast = null; LS.set('pv_gameSel', state.gameSel); setTab('game'); break; }
+    case 'tmCalc': tmCalc(); break;
+    case 'tmAdd': tmAdd(); break;
+    case 'tmDetail': if (state.tmLast?.res) openModal(teamDetailHTML(Object.assign({}, state.tmLast.res, { tmInfo: state.tmLast.res.tm ? tmSummary(state.tmLast.res.tm) : null }), gameMini(state.ctx.game))); break;
+    case 'pbScan': pbScan(); break;
+    case 'scanDetail': openModal(playerDetailHTML(state.scan.rows[i].res)); break;
+    case 'scanAdd': scanAdd(i); break;
+    case 'legDetail': { const l = legById(id); if (l) openModal(legDetailHTML(l)); break; }
+    case 'legDel': LEGS = LEGS.filter(l => l.id !== id); saveLegs(); viewLegs(); break;
+    case 'legRecalc': { const l = legById(id); if (!l) break; b.disabled = true; b.textContent = '…'; recalcLeg(l).then(() => { saveLegs(); viewLegs(); toast('Recalculated'); }).catch(e => { toast(e.message); b.disabled = false; b.textContent = 'Recalc'; }); break; }
+    case 'recalcAll': (async () => {
+      const el = $('#recalcProg'); let n = 0; const todo = LEGS.filter(l => l.kind !== 'custom');
+      for (const l of todo) { try { await recalcLeg(l); } catch (e) { toast(legLabel(l) + ': ' + e.message); } n++; if (el) el.textContent = `Recalculated ${n}/${todo.length}…`; }
+      saveLegs(); if (state.tab === 'legs') viewLegs(); toast('All legs recalculated');
+    })(); break;
+    case 'clearLegs': if (confirm('Remove every leg from the pool?')) { LEGS = []; saveLegs(); viewLegs(); } break;
+    case 'cuAdd': {
+      const p = parseFloat($('#cuP').value) / 100, odds = parseOdds($('#cuOdds').value), label = $('#cuLabel').value.trim();
+      if (!label || !(p > 0 && p < 1) || !odds) { toast('Fill in description, probability and odds'); break; }
+      const gid = +$('#cuGame').value || null;
+      const g = gid ? (LEGS.find(l => l.gameId === gid)?.game || (state.gameSel?.id === gid ? state.gameSel : null)) : null;
+      LEGS.push({ id: uid(), kind: 'custom', label, p, pModel: p, pEmp: null, push: 0, odds, oddsOther: null, adj: 0, include: true, lock: false, gameId: gid, game: g, team: null, outcomes: null, details: null, created: Date.now(), calcAt: Date.now() });
+      saveLegs(); viewLegs(); break;
+    }
+    case 'genParlays': state.results = generateParlays(); renderResults(); break;
+    case 'evalLocked': {
+      const locked = LEGS.filter(l => l.lock && l.odds > 1);
+      if (locked.length < 2) { toast('Lock at least 2 legs in the pool first'); break; }
+      state.results = { results: [evalParlay(locked)], checked: 1, free: 0, locked: locked.length };
+      renderResults(); break;
+    }
+    case 'parDetail': openModal(parlayDetailHTML(state.results.results[i], i)); break;
+    case 'pdReprice': { const x = state.results.results[i]; const o = parseOdds($('#pdOdds').value); const nx = evalParlay(x.legs, o || undefined); state.results.results[i] = nx; openModal(parlayDetailHTML(nx, i)); renderResults(); break; }
+    case 'pdSave': {
+      const x = state.results.results[i]; const stake = parseFloat($('#pdStake').value) || 0;
+      TRACK.push({ id: uid(), created: Date.now(), legs: x.legs.map(l => ({ label: legLabel(l), odds: l.odds, p: effP(l), game: l.game || null })), dec: x.dec, p: x.p, stake, status: 'open', closing: null });
+      saveTrack(); closeModal(); toast('Saved to tracker'); break;
+    }
+    case 'trDel': TRACK = TRACK.filter(t => t.id !== id); saveTrack(); viewTracker(); break;
+    case 'exportAll': {
+      const blob = new Blob([JSON.stringify({ app: 'parlay-value', exported: new Date().toISOString(), settings: S, legs: LEGS, tracker: TRACK }, null, 1)], { type: 'application/json' });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'parlay-value-backup.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); break;
+    }
+    case 'testConn': testConn(); break;
+    case 'copyWorker': navigator.clipboard?.writeText(WORKER_CODE).then(() => toast('Copied'), () => toast('Copy failed — select the text instead')); break;
+    case 'resetSettings': if (confirm('Reset all settings to defaults?')) { const keep = { proxyUrl: S.proxyUrl, connMode: S.connMode }; S = Object.assign({}, DEFAULTS, keep); saveSettings(); viewSettings(); } break;
+    case 'clearCache': BOX = {}; LS.set('pv_box', BOX); memCache.clear(); ctxCache.clear(); peCache.clear(); toast('Cache cleared'); break;
+  }
+}
+function onInput(ev) {
+  const t = ev.target;
+  if (t.dataset.scanodds != null) { const i = +t.dataset.scanodds; if (state.scan?.rows[i]) { state.scan.rows[i].odds = parseOdds(t.value); scanEdge(i); } return; }
+  if (t.id === 'tmOdds' || t.id === 'tmOther') { tmEdgeUpdate(); return; }
+}
+function onChange(ev) {
+  const t = ev.target;
+  if (t.id === 'tmMarket') { syncTmForm(); $('#tmOut').innerHTML = ''; return; }
+  if (t.id === 'pbMarket') { syncPbForm(); return; }
+  if (t.id === 'importFile') { importData(t.files[0]); return; }
+  if (t.dataset.set) {
+    const s = SCHEMA.find(x => x.key === t.dataset.set); let v;
+    if (s.type === 'bool') v = t.checked;
+    else if (s.type === 'number') { v = parseFloat(t.value); if (!isFinite(v)) { t.value = S[s.key]; return; } v = clamp(v, s.min, s.max); if (s.step === 1) v = Math.round(v); t.value = v; }
+    else v = t.value.trim();
+    S[s.key] = v; saveSettings();
+    if (s.key === 'connMode' || s.key === 'proxyUrl') directWorks = null;
+    if (s.key === 'oddsFormat' && state.tab !== 'settings') setTab(state.tab);
+    toast('Saved');
+    return;
+  }
+  if (t.dataset.leg) {
+    const l = legById(t.dataset.leg); if (!l) return; const f = t.dataset.f;
+    if (f === 'include' || f === 'lock') l[f] = t.checked;
+    else if (f === 'odds' || f === 'oddsOther') { const o = parseOdds(t.value); if (f === 'odds' && !o) { toast('Invalid odds'); t.value = oddsInputVal(l.odds); return; } l[f] = o; }
+    else if (f === 'adj') l.adj = clamp(parseFloat(t.value) || 0, -50, 50);
+    else if (f === 'pcustom') { const p = parseFloat(t.value) / 100; if (p > 0 && p < 1) { l.p = p; l.pModel = p; } }
+    saveLegs(); viewLegs(); return;
+  }
+  if (t.dataset.tr) {
+    const tr = TRACK.find(x => x.id === t.dataset.tr); if (!tr) return;
+    if (t.dataset.f === 'status') tr.status = t.value; else tr.closing = parseOdds(t.value);
+    saveTrack(); viewTracker();
+  }
+}
+function importData(file) {
+  if (!file) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const d = JSON.parse(r.result);
+      if (d.app !== 'parlay-value') throw new Error('Not a Parlay Value backup');
+      if (!confirm('Replace current settings, legs and tracker with this backup?')) return;
+      S = Object.assign({}, DEFAULTS, d.settings || {}); LEGS = d.legs || []; TRACK = d.tracker || [];
+      saveSettings(); saveLegs(); saveTrack(); toast('Imported'); setTab(state.tab);
+    } catch (e) { toast('Import failed: ' + e.message); }
+  };
+  r.readAsText(file);
+}
+function boot() {
+  V = $('#view');
+  document.addEventListener('click', onClick);
+  document.addEventListener('input', onInput);
+  document.addEventListener('change', onChange);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+  setTab('games');
+}
+/* ---------- sign-in wall (E&C Firebase accounts) + PWA ---------- */
+// Only these accounts can open the app. Empty list [] = any E&C account.
+const ALLOWED_EMAILS = ['justin@ec.com'];
+let booted = false, installEvt = null;
+function authGate() {
+  const err = $('#loginErr');
+  if (typeof firebase === 'undefined') { err.textContent = 'Sign-in service did not load. Check your connection and reload.'; return; }
+  firebase.initializeApp({ apiKey: 'AIzaSyAKmgoXA4m3cRTmxJq4aUyva5SVvFbTNqg', authDomain: 'eandccourier-36fcc.firebaseapp.com', databaseURL: 'https://eandccourier-36fcc-default-rtdb.firebaseio.com', projectId: 'eandccourier-36fcc', storageBucket: '', messagingSenderId: '1067680083511', appId: '1:1067680083511:android:22d1eb3757302492bd19b2' });
+  const auth = firebase.auth();
+  const signIn = () => {
+    const em = $('#lgEmail').value.trim(), pw = $('#lgPass').value;
+    if (!em || !pw) { err.textContent = 'Enter your email and password.'; return; }
+    err.textContent = ''; $('#lgBtn').disabled = true;
+    auth.signInWithEmailAndPassword(em, pw)
+      .catch(e => { err.textContent = /wrong-password|user-not-found|invalid-credential|invalid-login/.test(e.code || '') ? 'Wrong email or password.' : (e.message || 'Sign-in failed.'); })
+      .finally(() => { $('#lgBtn').disabled = false; });
+  };
+  $('#lgBtn').addEventListener('click', signIn);
+  $('#lgPass').addEventListener('keydown', e => { if (e.key === 'Enter') signIn(); });
+  $('#signOutBtn').addEventListener('click', () => auth.signOut());
+  auth.onAuthStateChanged(user => {
+    if (!user) { document.body.classList.add('locked'); return; }
+    const email = (user.email || '').toLowerCase();
+    if (ALLOWED_EMAILS.length && !ALLOWED_EMAILS.includes(email)) {
+      auth.signOut(); err.textContent = 'This account doesn\'t have access.'; return;
+    }
+    document.body.classList.remove('locked'); $('#lgPass').value = '';
+    if (!booted) { booted = true; boot(); }
+  });
+}
+function pwaSetup() {
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; $('#installBtn').style.display = 'inline-block'; });
+  window.addEventListener('appinstalled', () => { installEvt = null; $('#installBtn').style.display = 'none'; });
+  $('#installBtn').addEventListener('click', async () => {
+    if (!installEvt) return;
+    installEvt.prompt();
+    const r = await installEvt.userChoice.catch(() => null);
+    if (r && r.outcome === 'accepted') { installEvt = null; $('#installBtn').style.display = 'none'; }
+  });
+}
+if (typeof window !== 'undefined' && window.document) { pwaSetup(); authGate(); }
+</script>
+</body>
+</html>

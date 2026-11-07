@@ -113,7 +113,7 @@ nav button.adv{display:none}body.adv nav button.adv{display:inline-block}
     <button data-tab="game" class="adv">Game</button>
     <button data-tab="legs" class="adv">Leg pool</button>
     <button data-tab="parlays" class="adv">Parlays</button>
-    <button data-tab="tracker">Tracker</button>
+    <button data-tab="tracker">📋 My parlays</button>
     <button data-tab="settings">Settings</button>
     <button id="advToggle" data-act="advToggle">Advanced ▸</button>
   </nav>
@@ -412,7 +412,7 @@ async function getBox(g) {
 async function playerLogs(pid, seasons, types) {
   const all = [];
   await Promise.all(seasons.flatMap(s => types.map(gt =>
-    limit(() => api(`v1/player/${pid}/game-log/${s}/${gt}`, 600000))
+    limit(() => api(`v1/player/${pid}/game-log/${s}/${gt}`, 3600000))
       .then(d => { for (const e of (d.gameLog || [])) all.push(Object.assign({}, e, { season: s, gt })); })
       .catch(() => {}))));
   return all;
@@ -938,7 +938,7 @@ function generateParlays() {
 /* =====================================================================
    UI
    ===================================================================== */
-const state = { tab: 'find', found: LS.get('pv_found', null), finding: false, foundRes: {}, date: todayStr(), games: [], gameSel: LS.get('pv_gameSel', null), ctx: null, scan: null, scanSeq: 0, tmLast: null, results: null, evalRes: null };
+const state = { tab: 'find', bt: LS.get('pv_bt', null), found: LS.get('pv_found', null), finding: false, foundRes: {}, date: todayStr(), games: [], gameSel: LS.get('pv_gameSel', null), ctx: null, scan: null, scanSeq: 0, tmLast: null, results: null, evalRes: null };
 let V;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('on'), 2200); }
 function openModal(html) { $('#modalBody').innerHTML = html; $('#modal').hidden = false; }
@@ -1429,7 +1429,7 @@ async function finderGameLegs(ctx, onProg = () => {}) {
   onProg(1);
   return legs;
 }
-function finderBuild(cands) {
+function finderBuild(cands, opts = {}) {
   const k = S.finderLegs, sgp = S.finderMode === 'sgp';
   const types = new Set(S.finderTypes), variety = !S.finderHighest;
   const sorted = cands.filter(c => types.has(c.market) && c.p >= S.finderMinLegProb && c.p <= S.finderMaxLegProb).sort((a, b) => b.p - a.p);
@@ -1475,27 +1475,32 @@ function finderBuild(cands) {
     rec(0);
   }
   out.sort((a, b) => b.P - a.P);
+  // Parlays you've marked "I bet this" stay out of the list until you delete them from My parlays.
+  const used = opts.ignoreUsed ? new Set() : new Set(TRACK.map(t => t.sig).filter(Boolean));
   const use = {}, picked = [];
   for (const o of out) {
+    if (used.size && used.has(parlaySig(o.legs))) continue;
     if (o.legs.some(l => (use[l.id] || 0) >= S.finderLegUse)) continue;
     o.legs.forEach(l => use[l.id] = (use[l.id] || 0) + 1);
     picked.push(o);
     if (picked.length >= S.finderMaxShow) break;
   }
-  state.foundRes = {};
+  if (!opts.keepRes) state.foundRes = {};
   return {
     pool: poolTotal, combos: out.length,
     cards: picked.map(o => ({
-      id: uid(), P: o.P, pInd: o.pInd, factor: o.factor, fair: o.fair, price: null,
+      id: uid(), sig: parlaySig(o.legs), P: o.P, pInd: o.pInd, factor: o.factor, fair: o.fair, price: null,
       sgp: o.legs.every(l => l.gameId === o.legs[0].gameId) ? `${o.legs[0].game.away} @ ${o.legs[0].game.home}` : null,
       pairs: o.legs.flatMap((a, ai) => o.legs.slice(ai + 1).filter(b => a.gameId === b.gameId).map(b => { const r = pairInfo.get(a.id + '|' + b.id) || { rho: 0, src: '' }; return { a: plainLabel(a), b: plainLabel(b), rho: r.rho, src: r.src }; })),
       legs: o.legs.map(c => {
-        state.foundRes[c.id] = c;
-        return { id: c.id, label: plainLabel(c), look: lookFor(c), p: c.p, hit: legHitText(c), game: `${c.game.away} @ ${c.game.home}`, start: c.game.start, goalie: !!c.goalie, kind: c.kind, bk: blockKey(c), hideLabel: c.kind === 'player' ? `${c.subjectName} ${PM[c.market].label.toLowerCase()}` : plainLabel(c) };
+        if (!opts.keepRes) state.foundRes[c.id] = c;
+        return { id: c.id, g: gradeInfo(c), label: plainLabel(c), look: lookFor(c), p: c.p, hit: legHitText(c), game: `${c.game.away} @ ${c.game.home}`, start: c.game.start, goalie: !!c.goalie, kind: c.kind, bk: blockKey(c), hideLabel: c.kind === 'player' ? `${c.subjectName} ${PM[c.market].label.toLowerCase()}` : plainLabel(c) };
       }),
     })),
   };
 }
+function parlaySig(legs) { return legs.map(l => blockKey(l) + '|' + l.line + '|' + l.side).sort().join('#'); }
+function gradeInfo(c) { return { gameId: c.gameId, start: c.game.start, season: c.game.season, home: c.game.home, away: c.game.away, kind: c.kind, market: c.market, subjectId: c.subjectId || null, team: c.team, side: c.side, line: c.line }; }
 function blockKey(c) { return c.kind === 'player' ? `${c.gameId}|p${c.subjectId}|${c.market}` : `${c.gameId}|${c.market}|${c.team}|${c.side}|${c.line}`; }
 function getBlocked(date) { const B = LS.get('pv_blocked', null); return (B && B.date === date && Array.isArray(B.keys)) ? Object.assign({ labels: {} }, B) : { date, keys: [], labels: {} }; }
 function finderRebuild() {
@@ -1606,7 +1611,7 @@ function renderFound() {
       <ol>${c.legs.map(l => `<li>${esc(l.label)}${l.goalie ? ' 🥅' : ''} <span class="muted small">(${pct(l.p, 0)})</span><span class="look">${esc(l.look)} · ${esc(l.game)}${l.hit ? ' · ' + esc(l.hit) : ''}</span>${l.bk ? `<button class="b s" data-act="fHide" data-i="${i}" data-j="${c.legs.indexOf(l)}">🚫 Not on bet365</button>` : ''}</li>`).join('')}</ol>
       <div class="need">💰 Only bet if bet365 pays <b>${fmtOdds(c.fair)} or more</b><br><span class="muted small">That means a $10 bet returns at least $${(10 * c.fair).toFixed(2)}</span></div>
       <div class="row"><label class="f">bet365 parlay price<input class="price" data-fprice="${i}" inputmode="text" placeholder="${S.oddsFormat === 'decimal' ? '4.50' : '+350'}" value="${c.price ? oddsInputVal(c.price) : ''}"></label>
-      <button class="b" data-act="fWhy" data-i="${i}">Why?</button><button class="b" data-act="fSave" data-i="${i}">Save</button></div>
+      <button class="b" data-act="fWhy" data-i="${i}">Why?</button><button class="b p" data-act="fSave" data-i="${i}">✔ I bet this</button></div>
       <div id="fv${i}"></div></div>`;
   });
   el.innerHTML = h;
@@ -1636,6 +1641,212 @@ function fWhyHTML(i) {
   return h;
 }
 
+/* ---------- 📝 Auto-grading of saved parlays ---------- */
+const BOX_STAT = { sog: 'sog', goals: 'goals', points: 'points', assists: 'assists', blocks: 'blockedShots', hits: 'hits', pim: 'pim', saves: 'saves' };
+async function finalGame(g) {
+  // Club schedule (verified fields: gameState, scores, gameOutcome.lastPeriodType) tells us if the game is over.
+  const d = await api(`v1/club-schedule-season/${g.home}/${g.season}`, 300000);
+  const x = (d.games || []).find(y => y.id === g.gameId);
+  if (!x || !['OFF', 'FINAL'].includes(x.gameState) || x.homeTeam?.score == null) return null;
+  return { hs: x.homeTeam.score, as: x.awayTeam.score, reg: (x.gameOutcome?.lastPeriodType || 'REG') === 'REG' };
+}
+function boxPlayers(b) {
+  const all = [];
+  for (const side of ['homeTeam', 'awayTeam']) { const grp = b.playerByGameStats?.[side] || {}; for (const k of ['forwards', 'defense', 'goalies']) for (const p of (grp[k] || [])) all.push(p); }
+  return all;
+}
+function gradeFrom(g, fin, box) {
+  if (g.kind === 'player') {
+    const stat = BOX_STAT[g.market]; if (!stat || !box) return null;
+    const p = boxPlayers(box).find(x => x.playerId === g.subjectId);
+    if (!p) return 'void';
+    const v = p[stat]; if (v == null) return null;
+    const r = legResult(v, g.line, g.side);
+    return r === null ? 'void' : (r ? 'won' : 'lost');
+  }
+  if (g.kind === 'team') {
+    const pred = teamPredicate({ market: g.market, side: g.side, line: g.line }); if (!pred) return null;
+    const [t, o] = g.team === g.home ? [fin.hs, fin.as] : [fin.as, fin.hs];
+    const r = pred(t, o, fin.reg);
+    return r === 'W' ? 'won' : r === 'L' ? 'lost' : 'void';
+  }
+  return null;
+}
+async function gradeLeg(g) {
+  if (!g || !g.gameId || !g.home || !g.season) return null;
+  if (g.start && Date.now() < new Date(g.start).getTime() + 2 * 3600e3) return null;
+  const fin = await finalGame(g); if (!fin) return null;
+  const box = g.kind === 'player' ? await api(`v1/gamecenter/${g.gameId}/boxscore`, 864e5) : null;
+  return gradeFrom(g, fin, box);
+}
+async function gradeTracker() {
+  let changed = false;
+  for (const t of TRACK) {
+    if (t.status !== 'open' || !t.legs.some(l => l.g)) continue;
+    for (const l of t.legs) {
+      if (!l.g || l.result) continue;
+      try { const r = await gradeLeg(l.g); if (r) { l.result = r; changed = true; } } catch (e) {}
+    }
+    const rs = t.legs.map(l => l.result);
+    if (rs.includes('lost')) { t.status = 'lost'; t.auto = true; changed = true; }
+    else if (rs.length && rs.every(r => r === 'won')) { t.status = 'won'; t.auto = true; changed = true; }
+    else if (rs.every(r => r) && rs.includes('void')) { t.note = 'A bet was cancelled (player didn\'t play, or a tie on the line). Check what bet365 did and set the result yourself.'; changed = true; }
+  }
+  if (changed) saveTrack();
+  return changed;
+}
+
+/* ---------- 🧪 Backtest: replay past games, check accuracy, tune settings ---------- */
+const TUNE_STEPS = [
+  ['empWeight', [0, 0.15, 0.25, 0.4, 0.6]],
+  ['shrinkK', [2, 5, 10, 20]],
+  ['seasonDecay', [0.25, 0.5, 0.75, 1]],
+  ['oppStrength', [0, 0.25, 0.5, 0.75, 1]],
+  ['toiStrength', [0, 0.25, 0.5, 1]],
+  ['wMix', ['recent', 'balanced', 'season']],
+];
+const W_MIX = { recent: { wSeason: 15, wShort: 25, wMid: 30, wLong: 20 }, balanced: { wSeason: 30, wShort: 15, wMid: 25, wLong: 20 }, season: { wSeason: 50, wShort: 5, wMid: 15, wLong: 25 } };
+function dateAdd(d, n) { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + n); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); }
+function btProg(text, f) {
+  const el = $('#btProg'); if (!el) return;
+  el.innerHTML = f == null ? '' : `<div class="pbar"><div style="width:${Math.round(clamp(f, 0, 1) * 100)}%"></div></div><div class="small muted">${esc(text)}</div>`;
+}
+function legP(l) {
+  if (l.kind !== 'player' || !l.entries) return l.p;
+  CUR = l.season;
+  const r = analyzeEntries(l.entries, l.o);
+  return r.error ? l.p : r.p;
+}
+function logLoss(legs) {
+  let s = 0;
+  for (const l of legs) { const p = clamp(legP(l), 0.01, 0.99); s += -(l.y ? Math.log(p) : Math.log(1 - p)); }
+  return legs.length ? s / legs.length : 0;
+}
+function setMix(name) { Object.assign(S, W_MIX[name]); }
+function currentMix() { return Object.keys(W_MIX).find(k => Object.entries(W_MIX[k]).every(([a, b]) => S[a] === b)) || null; }
+async function runBacktest() {
+  if (state.btRunning) return;
+  state.btRunning = true;
+  const btn = $('#btGo'); if (btn) btn.disabled = true;
+  const days = +($('#btDays')?.value || 5);
+  const saved = Object.assign({}, S);
+  const legs = [], parlays = [];
+  try {
+    const dates = []; for (let i = 1; i <= days; i++) dates.push(dateAdd(todayStr(), -i));
+    let gi = 0; const allGames = [];
+    for (const date of dates) {
+      btProg(`Finding games on ${date}…`, 0.02);
+      const d = await api(`v1/schedule/${date}`, 864e5);
+      const wk = (d.gameWeek || []).find(w => w.date === date);
+      for (const g of (wk?.games || [])) if ((g.gameType === 2 || g.gameType === 3) && ['OFF', 'FINAL'].includes(g.gameState)) allGames.push({ id: g.id, date, season: g.season, start: g.startTimeUTC, home: g.homeTeam.abbrev, away: g.awayTeam.abbrev, homeName: g.homeTeam.commonName?.default || g.homeTeam.abbrev, awayName: g.awayTeam.commonName?.default || g.awayTeam.abbrev });
+    }
+    if (!allGames.length) throw new Error('No finished games found in those days.');
+    const byDate = {};
+    for (const g of allGames) {
+      gi++;
+      const label = `Replaying game ${gi} of ${allGames.length}: ${g.away} @ ${g.home} (${g.date})`;
+      btProg(label, 0.05 + 0.75 * (gi - 1) / allGames.length);
+      try {
+        const ctx = await loadCtx(g);
+        const cands = await finderGameLegs(ctx, f => btProg(label, 0.05 + 0.75 * (gi - 1 + f) / allGames.length));
+        const fin = await finalGame({ gameId: g.id, home: g.home, season: ctx.season });
+        if (!fin) continue;
+        const box = await api(`v1/gamecenter/${g.id}/boxscore`, 864e5);
+        for (const c of cands) {
+          const r = gradeFrom(gradeInfo(c), fin, box);
+          if (r !== 'won' && r !== 'lost') continue;
+          const y = r === 'won' ? 1 : 0;
+          const l = { p: c.p, y, kind: c.kind, market: c.market, gameId: g.id, season: ctx.season };
+          if (c.kind === 'player') {
+            const M = PM[c.market]; const opp = c.team === ctx.home ? ctx.away : ctx.home;
+            l.entries = await playerEntries(ctx, c.subjectId, c.team, c.market);
+            l.o = { line: c.line, side: c.side, opp, isHome: c.team === ctx.home, oppRatio: M.opp ? oppRatios(ctx, opp)[M.opp] : null, goalie: !!M.goalie };
+          }
+          c._y = y; legs.push(l);
+        }
+        (byDate[g.date] = byDate[g.date] || []).push(...cands.filter(c => c._y != null));
+      } catch (e) { toast(`${g.away} @ ${g.home}: ${e.message}`); }
+    }
+    if (legs.length < 50) throw new Error(`Only ${legs.length} bets could be checked — try more days.`);
+
+    btProg('Checking the app\'s top parlays…', 0.82);
+    for (const [date, cands] of Object.entries(byDate)) {
+      const b = finderBuild(cands, { ignoreUsed: true, keepRes: true });
+      const yById = Object.fromEntries(cands.map(c => [c.id, c._y]));
+      for (const card of b.cards) parlays.push({ date, P: card.P, hit: card.legs.every(l => yById[l.id] === 1) ? 1 : 0 });
+    }
+
+    // Calibration with current settings
+    const bins = Array.from({ length: 10 }, (_, i) => ({ lo: i / 10, n: 0, sp: 0, sy: 0 }));
+    for (const l of legs) { const b = bins[Math.min(9, Math.floor(l.p * 10))]; b.n++; b.sp += l.p; b.sy += l.y; }
+    const mk = {};
+    for (const l of legs) { const m = mk[l.market] = mk[l.market] || { n: 0, sp: 0, sy: 0 }; m.n++; m.sp += l.p; m.sy += l.y; }
+
+    // Tuning: learn on half the games, check on the other half
+    const train = legs.filter(l => l.gameId % 2 === 0), test = legs.filter(l => l.gameId % 2 === 1);
+    const baseTest = logLoss(test);
+    const best = {};
+    if (!currentMix()) setMix('balanced');
+    let step = 0; const totalSteps = TUNE_STEPS.reduce((s, t) => s + t[1].length, 0) * 2;
+    for (let pass = 0; pass < 2; pass++) for (const [key, vals] of TUNE_STEPS) {
+      let bestV = key === 'wMix' ? currentMix() : S[key], bestL = Infinity;
+      for (const v of vals) {
+        step++; btProg(`Looking for better settings… ${step}/${totalSteps}`, 0.85 + 0.14 * step / totalSteps);
+        await new Promise(r => setTimeout(r, 0));
+        if (key === 'wMix') setMix(v); else S[key] = v;
+        const L = logLoss(train);
+        if (L < bestL - 1e-9) { bestL = L; bestV = v; }
+      }
+      if (key === 'wMix') setMix(bestV); else S[key] = bestV;
+      best[key] = bestV;
+    }
+    const tunedTest = logLoss(test);
+    const tuned = {}; for (const [key] of TUNE_STEPS) if (key === 'wMix') Object.assign(tuned, W_MIX[best.wMix]); else tuned[key] = best[key];
+    S = Object.assign({}, saved);
+
+    const changes = Object.entries(tuned).filter(([k, v]) => S[k] !== v).map(([k, v]) => ({ k, from: S[k], to: v }));
+    state.bt = {
+      at: Date.now(), days, games: allGames.length, n: legs.length,
+      bins: bins.filter(b => b.n).map(b => ({ lo: b.lo, n: b.n, pred: b.sp / b.n, act: b.sy / b.n })),
+      markets: Object.entries(mk).map(([m, v]) => ({ m, n: v.n, pred: v.sp / v.n, act: v.sy / v.n })).sort((a, b) => b.n - a.n),
+      parlays: { n: parlays.length, exp: parlays.reduce((s, p) => s + p.P, 0), won: parlays.reduce((s, p) => s + p.hit, 0) },
+      tune: { baseTest, tunedTest, gain: baseTest > 0 ? (baseTest - tunedTest) / baseTest : 0, tuned, changes, testN: test.length },
+    };
+    LS.set('pv_bt', state.bt);
+    btProg('', null);
+    renderBacktest();
+  } catch (e) {
+    S = Object.assign({}, saved);
+    btProg('', null); const el = $('#btOut'); if (el) el.innerHTML = `<p class="bad">${esc(e.message)}</p>`;
+  } finally {
+    state.btRunning = false; const bb = $('#btGo'); if (bb) bb.disabled = false;
+  }
+}
+const SET_LABEL = k => SCHEMA.find(s => s.key === k)?.label || k;
+function renderBacktest() {
+  const el = $('#btOut'), b = state.bt; if (!el) return;
+  if (!b) { el.innerHTML = ''; return; }
+  const ok = (pred, act, n) => n < 30 ? '🤷' : Math.abs(pred - act) <= 0.05 ? '✅' : act < pred ? '⚠️ too hopeful' : '⚠️ too careful';
+  let h = `<p class="small">Replayed <b>${b.games} games</b> from the last ${b.days} days and checked <b>${b.n.toLocaleString()} bets</b>, using only stats from before each game.</p>`;
+  h += `<h3>When the app said… it really won</h3><div class="tw"><table><tr><th>App said</th><th class="n">Bets</th><th class="n">Really won</th><th></th></tr>`;
+  for (const x of b.bins) h += `<tr><td>${Math.round(x.lo * 100)}–${Math.round(x.lo * 100) + 10}% (avg ${pct(x.pred, 0)})</td><td class="n">${x.n}</td><td class="n"><b>${pct(x.act, 0)}</b></td><td>${ok(x.pred, x.act, x.n)}</td></tr>`;
+  h += `</table></div><p class="small muted">✅ = within 5 points. ⚠️ too hopeful = the app guessed higher than reality. 🤷 = not enough bets to tell.</p>`;
+  h += `<h3>By bet type</h3><div class="tw"><table><tr><th>Type</th><th class="n">Bets</th><th class="n">App said</th><th class="n">Really won</th><th></th></tr>`;
+  const name = m => (FIND_TYPES.find(t => t[0] === m) || [m, PM[m]?.label || TM[m]?.label || m])[1];
+  for (const x of b.markets) h += `<tr><td>${esc(name(x.m))}</td><td class="n">${x.n}</td><td class="n">${pct(x.pred, 0)}</td><td class="n"><b>${pct(x.act, 0)}</b></td><td>${ok(x.pred, x.act, x.n)}</td></tr>`;
+  h += `</table></div>`;
+  if (b.parlays.n) h += `<h3>The app's top parlays</h3><p>It picked <b>${b.parlays.n}</b> parlays. It expected about <b>${fx(b.parlays.exp, 1)}</b> to win. <b>${b.parlays.won}</b> really won. ${b.parlays.n < 30 ? '<span class="muted small">(Small number — luck plays a big part.)</span>' : ''}</p>`;
+  const t = b.tune;
+  h += `<h3>Better settings?</h3>`;
+  if (t.changes.length && t.gain > 0.002) {
+    h += `<p>Found settings that guessed <b>${(t.gain * 100).toFixed(1)}% better</b> on games it didn't practice on (${t.testN} bets).</p>
+      <div class="tw"><table><tr><th>Setting</th><th class="n">Now</th><th class="n">Better</th></tr>${t.changes.map(c => `<tr><td>${esc(SET_LABEL(c.k))}</td><td class="n">${c.from}</td><td class="n"><b>${c.to}</b></td></tr>`).join('')}</table></div>
+      <button class="b p" data-act="btApply">Use these settings</button>`;
+  } else h += `<p>Your current settings are already about as good as the ones it tried. 👍</p>`;
+  h += `<p class="small muted">Tested ${new Date(b.at).toLocaleString()}. A few days isn't a lot — more days gives a more trustworthy answer. Re-test every week or two.</p>`;
+  el.innerHTML = h;
+}
+
 /* ---------- Tracker ---------- */
 function viewTracker() {
   const settled = TRACK.filter(t => ['won', 'lost', 'push'].includes(t.status));
@@ -1646,22 +1857,35 @@ function viewTracker() {
   const expW = decided.reduce((s, t) => s + t.p, 0);
   const withClose = settled.filter(t => t.closing > 1);
   const clv = withClose.length ? mean(withClose.map(t => t.dec / t.closing - 1)) : null;
-  let h = `<div class="card"><h2>Tracker</h2><div class="big">
+  let h = `<div class="card"><h2>🧪 How good is the app?</h2>
+    <p class="small muted">Replays past games using only the stats the app would have had before each game, then checks how often its guesses were right — and looks for better settings.</p>
+    <div class="row"><label class="f">Days to test<select id="btDays">${[3, 5, 7, 14, 21].map(d => `<option value="${d}" ${d === 5 ? 'selected' : ''}>${d} days</option>`).join('')}</select></label>
+    <button class="b p" id="btGo" data-act="btRun" ${state.btRunning ? 'disabled' : ''}>🧪 Test it</button></div>
+    <p class="small muted">Takes a few minutes. More days = more trustworthy, but slower.</p>
+    <div id="btProg"></div><div id="btOut"></div></div>
+    <div class="card"><h2>📋 My parlays</h2><div class="big">
     <div><span>Bets settled</span><b>${settled.length}</b></div><div><span>Won / decided</span><b>${wins}/${decided.length}</b></div>
     <div><span>Model expected wins</span><b>${fx(expW, 1)}</b></div><div><span>Profit</span><b class="${profit >= 0 ? 'good' : 'bad'}">$${fx(profit)}</b></div>
     <div><span>ROI</span><b>${staked ? pct(profit / staked) : '–'}</b></div><div><span>Avg price vs close</span><b>${clv == null ? '–' : pct(clv)}</b></div></div>
-    <p class="small muted">If actual wins keep landing well below the model's expected wins, the model is too optimistic — raise the hit-rate weight or shrink settings. "Price vs close" compares your odds to the closing odds you enter; consistently positive is a good sign.</p>
-    <div class="row"><button class="b" data-act="exportAll">Export all data</button><label class="b">Import<input type="file" id="importFile" accept="application/json" hidden></label></div></div>`;
-  if (!TRACK.length) h += '<div class="card muted">No bets saved yet. Save one from a parlay\'s Details.</div>';
+    <p class="small muted">Wins and losses are marked automatically a couple of hours after each game ends. A parlay stays out of 🔍 Find until you delete it here.</p>
+    <div class="row"><button class="b" data-act="trGrade">🔄 Check results now</button><button class="b" data-act="exportAll">Export all data</button><label class="b">Import<input type="file" id="importFile" accept="application/json" hidden></label></div><div id="trMsg" class="small muted"></div></div>`;
+  if (!TRACK.length) h += '<div class="card muted">No parlays yet. On 🔍 Find, tap <b>✔ I bet this</b> on a parlay you placed.</div>';
+  const mark = r => r === 'won' ? '✅' : r === 'lost' ? '❌' : r === 'void' ? '➖' : '⏳';
   for (const t of TRACK.slice().reverse()) {
-    h += `<div class="leg"><div class="game"><div class="t">${t.legs.length}-leg · ${fmtOdds(t.dec)} · $${fx(t.stake)}</div><div class="small muted">${new Date(t.created).toLocaleDateString()}</div></div>
-      <div class="small">${t.legs.map(l => `${esc(l.label)} <span class="muted">${pct(l.p, 0)} @ ${fmtOdds(l.odds)}</span>`).join('<br>')}</div>
-      <div class="small">Model ${pct(t.p)} · EV ${evCell(t.p * t.dec - 1)}</div>
+    h += `<div class="leg"><div class="game"><div class="t">${t.status === 'won' ? '✅ WON · ' : t.status === 'lost' ? '❌ LOST · ' : ''}${t.legs.length}-leg · ${fmtOdds(t.dec)} · $${fx(t.stake)}${t.sgp ? ' · 🎯 ' + esc(t.sgp) : ''}</div><div class="small muted">${new Date(t.created).toLocaleDateString()}</div></div>
+      <div class="small">${t.legs.map(l => `${l.g ? mark(l.result) + ' ' : ''}${esc(l.label)} <span class="muted">${pct(l.p, 0)}${l.odds ? ' @ ' + fmtOdds(l.odds) : ''}</span>`).join('<br>')}</div>
+      <div class="small">App's chance ${pct(t.p)} · ${t.status === 'won' ? `Won $${fx(t.stake * (t.dec - 1))}` : t.status === 'lost' ? `Lost $${fx(t.stake)}` : `Pays $${fx(t.stake * t.dec)} if it wins`}</div>
+      ${t.note && t.status === 'open' ? `<div class="small warn">${esc(t.note)}</div>` : ''}
       <div class="row" style="margin-top:6px"><label class="f">Result<select data-tr="${t.id}" data-f="status">${['open', 'won', 'lost', 'push', 'void'].map(s => `<option ${t.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></label>
       <label class="f">Closing odds<input class="odds sm" data-tr="${t.id}" data-f="closing" value="${oddsInputVal(t.closing)}"></label>
       <button class="b s x" data-act="trDel" data-id="${t.id}">Delete</button></div></div>`;
   }
   V.innerHTML = h;
+  renderBacktest();
+  if (!state.grading && TRACK.some(t => t.status === 'open' && t.legs.some(l => l.g && !l.result))) {
+    state.grading = true;
+    gradeTracker().then(ch => { state.grading = false; if (ch && state.tab === 'tracker') viewTracker(); }).catch(() => { state.grading = false; });
+  }
 }
 
 /* ---------- Settings ---------- */
@@ -1746,12 +1970,16 @@ function onClick(ev) {
     case 'fWhy': openModal(fWhyHTML(i)); break;
     case 'fDetail': { const l = state.found.cards[i].legs[+b.dataset.j]; const c = state.foundRes[l.id]; if (c) openModal(c.kind === 'player' ? playerDetailHTML(c.res) : teamDetailHTML(Object.assign({}, c.res, { tmInfo: c.res.tm ? tmSummary(c.res.tm) : null }), c.game)); break; }
     case 'fSave': {
-      const c = state.found.cards[i]; if (!c.price) { toast('Type the bet365 price first'); break; }
-      const k = Math.max(0, (c.P * c.price - 1) / (c.price - 1)) * S.kellyFraction;
+      const c = state.found.cards[i]; if (!c) break;
+      let dec = c.price;
+      if (!dec) { const pr = prompt('What price did bet365 give you? (like +250)', ''); if (pr === null) break; dec = parseOdds(pr); if (!dec) { toast('That price didn\'t look right — try like +250 or 3.50'); break; } }
+      const k = Math.max(0, (c.P * dec - 1) / (dec - 1)) * S.kellyFraction;
       const stake = Math.min(S.bankroll * k, S.bankroll * S.maxStakePct / 100);
       const st = prompt('How much did you bet? ($)', (stake > 0 ? stake : 10).toFixed(2)); if (st === null) break;
-      TRACK.push({ id: uid(), created: Date.now(), legs: c.legs.map(l => ({ label: l.label, odds: null, p: l.p, game: null })), dec: c.price, p: c.P, stake: parseFloat(st) || 0, status: 'open', closing: null });
-      saveTrack(); toast('Saved to Tracker'); break;
+      TRACK.push({ id: uid(), created: Date.now(), sig: c.sig || null, sgp: c.sgp || null, legs: c.legs.map(l => ({ label: l.label, odds: null, p: l.p, game: l.game || null, g: l.g || null, result: null })), dec, p: c.P, stake: parseFloat(st) || 0, status: 'open', closing: null });
+      saveTrack();
+      if (state.findCands) finderRebuild(); else { state.found.cards.splice(i, 1); saveFound(); renderFound(); }
+      toast('Moved to My parlays — it won\'t show here until you delete it there'); break;
     }
     case 'loadGames': state.date = $('#gDate').value || todayStr(); loadGames(); break;
     case 'openGame': { const g = state.games.find(x => x.id === +id); if (!g) break; state.gameSel = gameMini(g); state.scan = null; state.tmLast = null; LS.set('pv_gameSel', state.gameSel); setTab('game'); break; }
@@ -1792,7 +2020,16 @@ function onClick(ev) {
       TRACK.push({ id: uid(), created: Date.now(), legs: x.legs.map(l => ({ label: legLabel(l), odds: l.odds, p: effP(l), game: l.game || null })), dec: x.dec, p: x.p, stake, status: 'open', closing: null });
       saveTrack(); closeModal(); toast('Saved to tracker'); break;
     }
-    case 'trDel': TRACK = TRACK.filter(t => t.id !== id); saveTrack(); viewTracker(); break;
+    case 'trDel': if (!confirm('Delete this parlay? It can show up in 🔍 Find again after this.')) break; TRACK = TRACK.filter(t => t.id !== id); saveTrack(); viewTracker(); break;
+    case 'trGrade': { const m = $('#trMsg'); if (m) m.textContent = 'Checking…'; gradeTracker().then(ch => { if (state.tab === 'tracker') { viewTracker(); const m2 = $('#trMsg'); if (m2) m2.textContent = ch ? 'Updated.' : 'Nothing new yet — games may still be playing.'; } }); break; }
+    case 'btRun': runBacktest(); break;
+    case 'btApply': {
+      const t = state.bt?.tune; if (!t) break;
+      Object.assign(S, t.tuned); saveSettings();
+      state.bt.tune.changes = []; LS.set('pv_bt', state.bt);
+      if (state.findCands) finderRebuild();
+      toast('New settings saved. Tap Find again to use them.'); renderBacktest(); break;
+    }
     case 'exportAll': {
       const blob = new Blob([JSON.stringify({ app: 'parlay-value', exported: new Date().toISOString(), settings: S, legs: LEGS, tracker: TRACK }, null, 1)], { type: 'application/json' });
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'parlay-value-backup.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); break;

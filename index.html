@@ -297,6 +297,7 @@ function seasonList(n) { const sy = Math.floor(CUR / 10000); return Array.from({
    DATA LAYER
    ===================================================================== */
 const NHL = 'https://api-web.nhle.com/';
+const DEFAULT_PROXY = 'https://nhl.justinharrisonreid.workers.dev'; // used when Settings → Proxy URL is blank
 const memCache = new Map(), inflight = new Map();
 let directWorks = null;
 async function rawFetch(url) {
@@ -313,7 +314,7 @@ async function api(path, ttl = 600000) {
   if (inflight.has(path)) return inflight.get(path);
   const pr = (async () => {
     const mode = S.connMode; let v;
-    const proxy = (S.proxyUrl || '').trim().replace(/\/+$/, '');
+    const proxy = (S.proxyUrl || DEFAULT_PROXY).trim().replace(/\/+$/, '');
     if (mode !== 'proxy' && !(directWorks === false && proxy && mode === 'auto')) {
       try { v = await rawFetch(NHL + path); directWorks = true; }
       catch (e) {
@@ -1359,7 +1360,7 @@ async function testConn() {
   const lines = [];
   try { await rawFetch(NHL + 'v1/standings/now'); lines.push('<span class="good">Direct: works</span>'); directWorks = true; }
   catch (e) { lines.push(e.status ? `<span class="bad">Direct: HTTP ${e.status}</span>` : '<span class="bad">Direct: blocked by browser (CORS) or offline</span>'); }
-  const proxy = (S.proxyUrl || '').trim().replace(/\/+$/, '');
+  const proxy = (S.proxyUrl || DEFAULT_PROXY).trim().replace(/\/+$/, '');
   if (proxy) { try { await rawFetch(proxy + '/v1/standings/now'); lines.push('<span class="good">Proxy: works</span>'); } catch (e) { lines.push(`<span class="bad">Proxy: ${esc(e.message)}</span>`); } }
   else lines.push('<span class="muted">Proxy: not set</span>');
   el.innerHTML = lines.join(' · ');

@@ -209,10 +209,7 @@ const SCHEMA = [
   { key: 'finderPoolSize', label: 'Best bets to combine', type: 'number', def: 60, min: 10, max: 120, step: 5, help: 'The top bets by chance that get mixed into parlays. Higher = slower.' },
   { key: 'finderTopF', label: 'Forwards per team to scan (most ice time)', type: 'number', def: 9, min: 0, max: 20, step: 1, help: 'Sportsbooks mostly post props for regulars. 9 = each team\'s 9 forwards with the most ice time in their last 5 games. 0 = everyone.' },
   { key: 'finderTopD', label: 'Defencemen per team to scan (most ice time)', type: 'number', def: 4, min: 0, max: 10, step: 1, help: '0 = everyone. Needs "Box scores per team" above 0.' },
-  { key: 'fSog', label: 'Use shots on goal', type: 'bool', def: true },
-  { key: 'fScoring', label: 'Use goals, points, assists', type: 'bool', def: true },
-  { key: 'fLines', label: 'Use game lines (moneyline, puck line, totals)', type: 'bool', def: true },
-  { key: 'fBlocks', label: 'Use blocked shots & goalie saves', type: 'bool', def: true },
+  { key: 'finderHighest', label: '⭐ Highest probability (any mix of the checked bet types)', type: 'bool', def: true, help: 'Off = every leg in a parlay is a different bet type. Bet types are picked with the checkboxes on the Find screen.' },
 
   { group: 'Bankroll' },
   { key: 'bankroll', label: 'Bankroll ($)', type: 'number', def: 100, min: 0, max: 10000000, step: 1 },
@@ -224,6 +221,8 @@ const SCHEMA = [
 ];
 const DEFAULTS = Object.fromEntries(SCHEMA.filter(s => s.key).map(s => [s.key, s.def]));
 let S = Object.assign({}, DEFAULTS, LS.get('pv_settings', {}));
+const FIND_TYPES = [['sog', 'Shots on goal'], ['goals', 'Goals'], ['points', 'Points'], ['assists', 'Assists'], ['blocks', 'Blocked shots'], ['saves', 'Goalie saves'], ['ml', 'Moneyline'], ['spread', 'Puck line'], ['total', 'Total goals']];
+if (!Array.isArray(S.finderTypes)) S.finderTypes = FIND_TYPES.map(t => t[0]);
 function saveSettings() { LS.set('pv_settings', S); }
 
 /* ---------- markets ---------- */
@@ -1376,7 +1375,7 @@ async function finderGameLegs(ctx, onProg = () => {}) {
   for (const T of [ctx.home, ctx.away]) lastIds[T] = (ctx.sched[T] || []).slice(0, 2).map(x => x.id);
   const playedRecently = (r, T) => !lastIds[T].length || (r.outcomes && lastIds[T].some(id => id in r.outcomes));
   const mk = (res, extra) => Object.assign({ id: uid(), gameId: g.id, game: g, p: res.p, outcomes: res.outcomes || null, res }, extra);
-  if (S.fLines && !ctx.tm.error) {
+  if (!ctx.tm.error) {
     const H = ctx.home, A = ctx.away;
     const specs = [['ml', { team: H }], ['ml', { team: A }], ['spread', { team: H, line: -1.5 }], ['spread', { team: A, line: -1.5 }], ['spread', { team: H, line: 1.5 }], ['spread', { team: A, line: 1.5 }],
       ['total', { side: 'over', line: 5.5 }], ['total', { side: 'under', line: 5.5 }], ['total', { side: 'over', line: 6.5 }], ['total', { side: 'under', line: 6.5 }]];
@@ -1385,10 +1384,8 @@ async function finderGameLegs(ctx, onProg = () => {}) {
       if (!r.error) legs.push(mk(r, { kind: 'team', market: m, team: r.team, side: r.side, line: r.line }));
     }
   }
-  const markets = [];
-  if (S.fSog) markets.push(['sog', [1.5, 2.5, 3.5]]);
-  if (S.fScoring) markets.push(['goals', [0.5]], ['points', [0.5, 1.5]], ['assists', [0.5]]);
-  if (S.fBlocks) markets.push(['blocks', [0.5, 1.5, 2.5]]);
+  // Every bet type is scanned so the type checkboxes can rebuild instantly without a new scan.
+  const markets = [['sog', [1.5, 2.5, 3.5]], ['goals', [0.5]], ['points', [0.5, 1.5]], ['assists', [0.5]], ['blocks', [0.5, 1.5, 2.5]]];
   let skaters = markets.length ? ctx.players.filter(p => p.pos !== 'G') : [];
   if (S.finderTopF > 0 || S.finderTopD > 0) {
     const keep = new Set();
@@ -1415,7 +1412,7 @@ async function finderGameLegs(ctx, onProg = () => {}) {
     } catch (e) {}
     done++; onProg(done / total);
   }));
-  if (S.fBlocks) for (const T of [ctx.home, ctx.away]) {
+  for (const T of [ctx.home, ctx.away]) {
     const starts = {};
     for (const b of (ctx.box[T] || []).slice(0, 10)) for (const [pid, p] of Object.entries(b.pl)) if (p.gk && p.st && p.t === T) starts[pid] = (starts[pid] || 0) + 1;
     const best = Object.entries(starts).sort((a, b) => b[1] - a[1])[0];
@@ -1434,14 +1431,22 @@ async function finderGameLegs(ctx, onProg = () => {}) {
 }
 function finderBuild(cands) {
   const k = S.finderLegs, sgp = S.finderMode === 'sgp';
-  const sorted = cands.filter(c => c.p >= S.finderMinLegProb && c.p <= S.finderMaxLegProb).sort((a, b) => b.p - a.p);
+  const types = new Set(S.finderTypes), variety = !S.finderHighest;
+  const sorted = cands.filter(c => types.has(c.market) && c.p >= S.finderMinLegProb && c.p <= S.finderMaxLegProb).sort((a, b) => b.p - a.p);
+  const perTypeCap = variety ? Math.max(5, Math.ceil(S.finderPoolSize / Math.max(1, types.size))) : Infinity;
   // Same-game mode: build a separate pool for each game so every game gets its own best bets.
   const groups = sgp ? Object.values(sorted.reduce((m, c) => ((m[c.gameId] = m[c.gameId] || []).push(c), m), {})) : [sorted];
   const maxPerGame = sgp ? k : S.finderMaxPerGame;
   const out = [], pairInfo = new Map(); let poolTotal = 0;
   for (const group of groups) {
     const seen = new Set(), pool = [];
-    for (const c of group) { const key = finderKey(c); if (seen.has(key)) continue; seen.add(key); pool.push(c); if (pool.length >= S.finderPoolSize) break; }
+    const typeCount = {};
+    for (const c of group) {
+      const key = finderKey(c); if (seen.has(key)) continue;
+      if ((typeCount[c.market] || 0) >= perTypeCap) continue;
+      seen.add(key); typeCount[c.market] = (typeCount[c.market] || 0) + 1; pool.push(c);
+      if (pool.length >= S.finderPoolSize) break;
+    }
     const n = pool.length; poolTotal += n;
     if (n < k) continue;
     const rho = pool.map(() => new Array(n).fill(0));
@@ -1456,6 +1461,7 @@ function finderBuild(cands) {
         const legs = idx.map(i => pool[i]);
         const per = {};
         for (const l of legs) { per[l.gameId] = (per[l.gameId] || 0) + 1; if (per[l.gameId] > maxPerGame) return; }
+        if (variety && new Set(legs.map(l => l.market)).size < legs.length) return;
         const ps = legs.map(l => l.p), rm = idx.map(a => idx.map(b => rho[a][b]));
         const jp = jointProb(ps, rm);
         if (!(jp.p > 0)) return;
@@ -1507,6 +1513,10 @@ function viewFind() {
     <div class="row" style="margin-bottom:10px">
       <button class="b ${S.finderMode !== 'sgp' ? 'p' : ''}" data-act="fMode" data-m="mixed">🔀 Mix of games</button>
       <button class="b ${S.finderMode === 'sgp' ? 'p' : ''}" data-act="fMode" data-m="sgp">🎯 Same game</button></div>
+    <div class="small muted" style="margin:4px 0">Bet types to use:</div>
+    <div class="row" style="margin-bottom:6px">${FIND_TYPES.map(([k, l]) => `<label class="chk" style="min-width:140px"><input type="checkbox" data-ftype="${k}" ${S.finderTypes.includes(k) ? 'checked' : ''}>${l}</label>`).join('')}</div>
+    <label class="chk" style="margin-bottom:4px"><input type="checkbox" id="fHigh" ${S.finderHighest ? 'checked' : ''}><b>⭐ Highest probability</b></label>
+    <div class="small muted" id="fHighHelp" style="margin-bottom:10px">${S.finderHighest ? 'On: the most likely parlays, any mix of the checked types.' : `Off: every leg is a different type${S.finderTypes.length === S.finderLegs ? ' — one of each checked type' : ''}.`}</div>
     <div class="row" style="margin-bottom:10px"><label class="f">Day<input type="date" id="fDate" value="${state.found?.date && state.found.date >= todayStr() ? state.found.date : todayStr()}"></label>
       <label class="f" id="fGameW" style="display:${S.finderMode === 'sgp' ? '' : 'none'}">Which game<select id="fGame"><option value="">Best from every game</option></select></label></div>
     <button class="b p bigbtn" id="fGo" data-act="runFinder" ${state.finding ? 'disabled' : ''}>🔍 Find my parlays</button>
@@ -1586,7 +1596,9 @@ function renderFound() {
     ⚠️ Before you bet: make sure each player is playing tonight${f.cards.some(c => c.legs.some(l => l.goalie)) ? ' and each goalie is starting' : ''}.<br>
     If bet365 doesn't offer a bet, tap <b>🚫 Not on bet365</b> under it and the list rebuilds without it.
     ${(() => { const B = getBlocked(f.date); return B.keys.length ? `<br>🚫 ${B.keys.length} bet${B.keys.length > 1 ? 's' : ''} hidden today: <span class="muted">${B.keys.map(k => esc(B.labels[k] || k)).join(', ')}</span> <button class="b s" data-act="fUnhide">Show them again</button>` : ''; })()}</div>`;
-  if (!f.cards.length) h += `<div class="card">Nothing matched. In Settings → Parlay finder, try lowering "Lowest leg chance allowed" or "Minimum payout".</div>`;
+  if (!f.cards.length) h += !S.finderTypes.length ? `<div class="card">Tick at least one bet type above.</div>`
+    : (!S.finderHighest && S.finderTypes.length < S.finderLegs) ? `<div class="card">With ⭐ Highest probability off, each leg must be a different type — tick at least ${S.finderLegs} bet types, or turn ⭐ back on.</div>`
+    : `<div class="card">Nothing matched. Try ticking more bet types, or in Settings → Parlay finder lower "Lowest leg chance allowed" or "Minimum payout".</div>`;
   f.cards.forEach((c, i) => {
     const oneIn = 1 / c.P;
     h += `<div class="pcard"><div class="small muted">Parlay ${i + 1}${c.sgp ? ` · 🎯 Same game: ${esc(c.sgp)}` : ''}</div>
@@ -1803,6 +1815,13 @@ function onChange(ev) {
   if (t.id === 'pbMarket') { syncPbForm(); return; }
   if (t.id === 'importFile') { importData(t.files[0]); return; }
   if (t.id === 'fGame') { state.finderGame = +t.value || null; findSettingsChanged(); return; }
+  if (t.dataset.ftype || t.id === 'fHigh') {
+    if (t.id === 'fHigh') S.finderHighest = t.checked;
+    else S.finderTypes = FIND_TYPES.map(x => x[0]).filter(k => { const cb = document.querySelector(`[data-ftype="${k}"]`); return cb ? cb.checked : S.finderTypes.includes(k); });
+    saveSettings();
+    const hh = $('#fHighHelp'); if (hh) hh.textContent = S.finderHighest ? 'On: the most likely parlays, any mix of the checked types.' : `Off: every leg is a different type${S.finderTypes.length === S.finderLegs ? ' — one of each checked type' : ''}.`;
+    findSettingsChanged(); return;
+  }
   if (t.id === 'fDate') { state.finderGame = null; fillFindGames(); return; }
   if (t.dataset.set) {
     const s = SCHEMA.find(x => x.key === t.dataset.set); let v;

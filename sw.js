@@ -1,7 +1,7 @@
 // Parlay Value service worker.
 // Pages load network-first (so updates show up right away) and fall back to cache when offline.
 // NHL data, Firebase and other outside requests are never cached here.
-const CACHE = 'pv-v1';
+const CACHE = 'pv-v2';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', e => {

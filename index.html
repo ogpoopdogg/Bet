@@ -379,12 +379,16 @@ const SCHEMA = [
   { key: 'oppStrength', label: 'Opponent adjustment strength', type: 'number', def: 0.5, min: 0, max: 1, step: 0.05, help: '0 = ignore opponent. 1 = full ratio (e.g. opponent allows 10% more shots than average → ×1.10).' },
   { key: 'toiStrength', label: 'Ice-time trend strength', type: 'number', def: 0.5, min: 0, max: 1, step: 0.05, help: 'Recent TOI vs average TOI. 0 = ignore.' },
   { key: 'goalsFromShots', label: 'Goals from shots (anti-hot-streak)', type: 'number', def: 0.5, min: 0, max: 1, step: 0.05, help: 'Goal bets: mixes in expected shots × shooting %, pulled toward league average. Stops chasing lucky streaks. 0 = off.' },
-  { key: 'goalieStrength', label: 'Other goalie quality strength', type: 'number', def: 0.5, min: 0, max: 1, step: 0.05, help: 'Goals, points and assists go up against a weak goalie and down against a strong one. Uses a guess of who starts.' },
+  { key: 'goalieStrength', label: 'Other goalie quality strength', type: 'number', def: 0.5, min: 0, max: 1, step: 0.05, help: 'Goals, points and assists go up when tonight\'s goalie is worse than his team\'s usual goalies, and down when he\'s better. Uses a guess of who starts.' },
+  { key: 'goalieShrinkShots', label: 'Goalie save % pull to average (shots)', type: 'number', def: 1000, min: 0, max: 5000, step: 50, help: 'Save % is very streaky. 1000 = a goalie\'s own number counts as much as 1000 average shots. Measured from real 2025-26 goalie games.' },
   { key: 'penStrength', label: 'Penalties / power play strength', type: 'number', def: 0.5, min: 0, max: 1, step: 0.05, help: 'Boosts power-play players when the other team takes lots of penalties.' },
   { key: 'empWeight', label: 'Hit-rate weight in final %', type: 'number', def: 0.25, min: 0, max: 1, step: 0.05, help: 'Final = (1 − this) × model + this × shrunk hit rate over the long window.' },
   { key: 'distModel', label: 'Count distribution', type: 'select', def: 'nb', options: [['nb', 'Negative binomial (uses real variance)'], ['poisson', 'Poisson']], help: 'Shots and saves usually vary more than Poisson assumes; negative binomial uses the player\'s own variance.' },
 
   { group: 'Team / game model' },
+  { key: 'teamShrinkK', label: 'Early-season pull to average (games)', type: 'number', def: 30, min: 0, max: 100, step: 1, help: 'Team goals for/against are pulled toward league average as if this many average games were added. Measured: after 17 games only about 40% of a team\'s difference from average holds up. 0 = trust this season\'s numbers fully.' },
+  { key: 'enLead1', label: 'Late goals: 1-goal leads that add a goal', type: 'number', def: 0.13, min: 0, max: 0.5, step: 0.01, help: 'Empty-net and late goals. Measured from 8,082 real games (fit on 4 seasons, checked on 3 others).' },
+  { key: 'enLead2', label: 'Late goals: 2-goal leads that add a goal', type: 'number', def: 0.31, min: 0, max: 0.6, step: 0.01, help: 'Measured the same way as above.' },
   { key: 'teamL10Weight', label: 'Last-10 form weight', type: 'number', def: 0.3, min: 0, max: 1, step: 0.05 },
   { key: 'teamSplitWeight', label: 'Home/road split weight', type: 'number', def: 0.5, min: 0, max: 1, step: 0.05 },
   { key: 'h2hTeamWeight', label: 'Head-to-head meetings weight', type: 'number', def: 0.1, min: 0, max: 1, step: 0.05 },
@@ -412,6 +416,7 @@ const SCHEMA = [
   { group: 'Parlay finder (🔍 Find tab)' },
   { key: 'finderMinPayout', label: 'Minimum payout (× your bet)', type: 'number', def: 2, min: 1.1, max: 100, step: 0.1, help: '2 = a $10 bet must return at least $20 in total.' },
   { key: 'finderMode', label: 'Parlay type', type: 'select', def: 'mixed', options: [['mixed', 'Mix of games'], ['sgp', 'Same game only']], help: 'Same as the switch on the Find screen.' },
+  { key: 'useCalib', label: 'Correct chances using 🧪 test results', type: 'bool', def: true, help: 'After you run 🧪 Test it, chances are nudged toward what really happened when the app said that number before. Stops the "best of thousands" picks looking better than they are.' },
   { key: 'finderUnders', label: 'Include unders for players', type: 'bool', def: true, help: 'e.g. "2 or fewer shots". Same as the checkbox on the Find screen.' },
   { key: 'minEdgeOK', label: 'Extra value needed for ✅ (%)', type: 'number', def: 5, min: 0, max: 100, step: 1, help: 'The model makes mistakes, so tiny edges are mostly noise. 5 = bet365 must pay at least 5% more than the fair price.' },
   { key: 'finderCushion', label: 'Room for bet365\'s cut', type: 'number', def: 1.2, min: 1, max: 3, step: 0.05, help: 'bet365 pays less than the fair price. 1.2 = the fair payout must be 20% above your minimum, so bet365\'s real price can still reach it. bet365\'s exact cut isn\'t published here — adjust after comparing a few real prices.' },
@@ -599,25 +604,29 @@ let BOX = LS.get('pv_box', {});
 function saveBox() {
   const ids = Object.keys(BOX);
   if (ids.length > 700) { ids.sort((a, b) => (BOX[a].saved || 0) - (BOX[b].saved || 0)).slice(0, ids.length - 600).forEach(id => delete BOX[id]); }
-  if (!LS.set('pv_box', BOX)) { BOX = {}; LS.set('pv_box', BOX); }
+  if (!LS.set('pv_box', BOX)) {
+    // Storage full: keep using every box score in memory this session, and save only the newest 300.
+    const small = {}; Object.keys(BOX).sort((a, b) => (BOX[b].saved || 0) - (BOX[a].saved || 0)).slice(0, 300).forEach(k => small[k] = BOX[k]);
+    if (!LS.set('pv_box', small)) LS.set('pv_box', {});
+  }
 }
 let boxDirty = false;
 function trimBox(b, g) {
-  const t = { v: 2, id: b.id || g.id, date: g.date, season: g.season, final: true, saved: Date.now(),
+  const t = { v: 3, id: b.id || g.id, date: g.date, season: g.season, final: true, saved: Date.now(),
     home: { a: b.homeTeam?.abbrev, s: b.homeTeam?.score, sog: b.homeTeam?.sog },
     away: { a: b.awayTeam?.abbrev, s: b.awayTeam?.score, sog: b.awayTeam?.sog }, pl: {} };
   const pbg = b.playerByGameStats || {};
   for (const side of ['homeTeam', 'awayTeam']) {
     const abbr = side === 'homeTeam' ? t.home.a : t.away.a; const grp = pbg[side] || {};
     for (const k of ['forwards', 'defense']) for (const p of (grp[k] || [])) {
-      t.pl[p.playerId] = { t: abbr, h: p.hits ?? null, b: p.blockedShots ?? null, s: p.sog ?? null, pim: p.pim ?? null, toi: toiMin(p.toi) };
+      t.pl[p.playerId] = { t: abbr, h: p.hits ?? null, b: p.blockedShots ?? null, s: p.sog ?? null, g: p.goals ?? null, d: k === 'defense' ? 1 : 0, n: p.name?.default || null, pim: p.pim ?? null, toi: toiMin(p.toi) };
     }
-    for (const p of (grp.goalies || [])) t.pl[p.playerId] = { t: abbr, gk: 1, sa: p.shotsAgainst ?? null, ga: p.goalsAgainst ?? null, st: p.starter ?? null, toi: toiMin(p.toi) };
+    for (const p of (grp.goalies || [])) t.pl[p.playerId] = { t: abbr, gk: 1, n: p.name?.default || null, sa: p.shotsAgainst ?? null, ga: p.goalsAgainst ?? null, st: p.starter ?? null, toi: toiMin(p.toi) };
   }
   return t;
 }
 async function getBox(g) {
-  if (BOX[g.id] && BOX[g.id].v === 2) return BOX[g.id];
+  if (BOX[g.id] && BOX[g.id].v === 3) return BOX[g.id];
   const b = await limit(() => api(`v1/gamecenter/${g.id}/boxscore`, 864e5));
   const t = trimBox(b, g);
   BOX[g.id] = t; boxDirty = true;
@@ -644,18 +653,25 @@ async function loadCtx(g, progress = () => {}) {
   const ctx = { key, game: g, date: g.date, season, home: g.home, away: g.away, standings: {}, players: [], sched: {}, box: {}, boxStats: {} };
 
   progress('Loading standings and rosters…');
-  const stPath = g.date < todayStr() ? `v1/standings/${g.date}` : 'v1/standings/now';
+  // Past games: standings from the DAY BEFORE. The NHL's standings for a date already include that night's results.
+  const isPast = g.date < todayStr();
+  const stPath = isPast ? `v1/standings/${dateAdd(g.date, -1)}` : 'v1/standings/now';
   const [stand, rH, rA] = await Promise.all([
     api(stPath, 300000).catch(() => api('v1/standings/now', 300000)),
     api(`v1/roster/${g.home}/current`, 3600000).catch(() => null),
     api(`v1/roster/${g.away}/current`, 3600000).catch(() => null),
   ]);
-  let sgf = 0, sgp = 0;
+  let sgf = 0, sgp = 0; const ven = { hgf: 0, hga: 0, hgp: 0, rgf: 0, rga: 0, rgp: 0 };
   for (const r of (stand.standings || [])) {
     const a = r.teamAbbrev?.default; if (!a) continue;
     ctx.standings[a] = r; sgf += r.goalFor || 0; sgp += r.gamesPlayed || 0;
+    ven.hgf += r.homeGoalsFor || 0; ven.hga += r.homeGoalsAgainst || 0; ven.hgp += r.homeGamesPlayed || 0;
+    ven.rgf += r.roadGoalsFor || 0; ven.rga += r.roadGoalsAgainst || 0; ven.rgp += r.roadGamesPlayed || 0;
   }
-  ctx.league = { gpg: sgp ? sgf / sgp : null, teams: Object.keys(ctx.standings).length };
+  const lgAll = sgp ? sgf / sgp : null;
+  ctx.league = { gpg: lgAll, teams: Object.keys(ctx.standings).length,
+    home: { For: ven.hgp ? ven.hgf / ven.hgp : lgAll, Against: ven.hgp ? ven.hga / ven.hgp : lgAll },
+    road: { For: ven.rgp ? ven.rgf / ven.rgp : lgAll, Against: ven.rgp ? ven.rga / ven.rgp : lgAll } };
   for (const [abbr, ro] of [[g.home, rH], [g.away, rA]]) {
     if (!ro) continue;
     for (const grp of ['forwards', 'defensemen', 'goalies']) for (const p of (ro[grp] || [])) {
@@ -687,7 +703,6 @@ async function loadCtx(g, progress = () => {}) {
       ctx.box[abbr] = (await Promise.all(hist.map(h => getBox(h).then(b => { done++; progress(`Loading box scores ${done}/${tot}…`); return b; }).catch(() => null)))).filter(Boolean);
     }
     if (boxDirty) { saveBox(); boxDirty = false; }
-    const allSog = [], seen = new Set();
     for (const abbr of [g.home, g.away]) {
       const sf = [], sa = [], tot2 = [], games = [];
       for (const b of ctx.box[abbr]) {
@@ -695,15 +710,20 @@ async function loadCtx(g, progress = () => {}) {
         if (me.sog == null || op.sog == null) continue;
         sf.push(me.sog); sa.push(op.sog); tot2.push(me.sog + op.sog);
         games.push({ id: b.id, date: b.date, sf: me.sog, sa: op.sog, opp: op.a, home: isH });
-        if (!seen.has(b.id)) { seen.add(b.id); allSog.push(me.sog, op.sog); }
       }
       if (sf.length) ctx.boxStats[abbr] = { n: sf.length, sf: mean(sf), sa: mean(sa), sfArr: sf, saArr: sa, totArr: tot2, games };
     }
-    ctx.shotBase = allSog.length >= 6 ? mean(allSog) : null;
-  } else { ctx.box[g.home] = []; ctx.box[g.away] = []; ctx.shotBase = null; }
+    // Past games (🧪 test): use who actually played for each team back then, not today's roster.
+    if (isPast) for (const abbr of [g.home, g.away]) {
+      const have = new Set(ctx.players.filter(p => p.team === abbr).map(p => p.id));
+      for (const b of (ctx.box[abbr] || []).slice(0, 5)) for (const [pid, p] of Object.entries(b.pl)) {
+        if (p.t !== abbr || have.has(+pid)) continue;
+        have.add(+pid); ctx.players.push({ id: +pid, name: p.n || 'Player ' + pid, pos: p.gk ? 'G' : p.d ? 'D' : 'F', num: null, team: abbr });
+      }
+    }
+  } else { ctx.box[g.home] = []; ctx.box[g.away] = []; }
 
-  ctxExtras(ctx);
-  ctx.tm = teamModel(ctx);
+  await refreshCtx(ctx);
   ctxCache.set(key, ctx);
   if (ctxCache.size > 6) ctxCache.delete(ctxCache.keys().next().value);
   return ctx;
@@ -715,21 +735,8 @@ function ctxExtras(ctx) {
   const teams = [ctx.home, ctx.away];
   ctx.b2b = {}; ctx.goalie = {}; ctx.pim = {}; ctx.restSplit = {};
   for (const T of teams) ctx.b2b[T] = (ctx.sched[T] || [])[0]?.date === prev;
-  // League-style baselines from every box score loaded for this game (both sides of each game).
-  let sa = 0, ga = 0, goals = 0, sog = 0; const pimGames = []; const seen = new Set();
-  for (const T of teams) for (const b of (ctx.box[T] || [])) {
-    if (seen.has(b.id)) continue; seen.add(b.id);
-    for (const side of [b.home, b.away]) if (side.s != null && side.sog != null) { goals += side.s; sog += side.sog; }
-    const pimBy = {};
-    for (const p of Object.values(b.pl)) {
-      if (p.gk) { if (p.sa != null && p.ga != null) { sa += p.sa; ga += p.ga; } }
-      else if (p.pim != null) pimBy[p.t] = (pimBy[p.t] || 0) + p.pim;
-    }
-    for (const v of Object.values(pimBy)) pimGames.push(v);
-  }
-  ctx.svBase = sa >= 300 ? 1 - ga / sa : null;
-  ctx.shBase = sog >= 300 ? goals / sog : null;
-  ctx.pimBase = pimGames.length >= 6 ? mean(pimGames) : null;
+  // League-wide averages (shots, save %, shooting % by position, penalties) from all saved box scores.
+  Object.assign(ctx, leagueBase(ctx));
   for (const T of teams) {
     const boxes = ctx.box[T] || [];
     // Penalty minutes this team takes per game (more = more power plays for the other team).
@@ -752,12 +759,15 @@ function ctxExtras(ctx) {
       if (lastStarter && lastStarter === pick && order[1]) { pick = order[1]; why = 'back-to-back — the goalie from last night usually rests'; }
     }
     if (pick) {
+      // Quick version from box scores; goalieQuality() replaces it with game-log numbers when it can.
       const f = faced[pick] || { sa: 0, ga: 0 };
-      const K = 300;
-      const sv = ctx.svBase != null ? ((f.sa ? f.sa * (1 - f.ga / f.sa) : 0) + K * ctx.svBase) / (f.sa + K) : null;
+      let tsa = 0, tga = 0; for (const v of Object.values(faced)) { tsa += v.sa; tga += v.ga; }
+      const K = S.goalieShrinkShots, svL = ctx.svBase;
+      const sv = svL != null ? (f.sa - f.ga + K * svL) / (f.sa + K) : null;
+      const teamSv = svL != null ? (tsa - tga + K * svL) / (tsa + K) : null;
       const pl = ctx.players.find(p => p.id === +pick);
-      ctx.goalie[T] = { id: +pick, name: pl ? pl.name : 'Unknown goalie', why, sa: f.sa, rawSv: f.sa ? 1 - f.ga / f.sa : null, sv,
-        ratio: (sv != null && ctx.svBase != null && ctx.svBase < 1) ? (1 - sv) / (1 - ctx.svBase) : null };
+      ctx.goalie[T] = { id: +pick, name: pl ? pl.name : 'Unknown goalie', why, sa: f.sa, rawSv: f.sa ? 1 - f.ga / f.sa : null, sv, teamSv, src: 'box',
+        ratio: (sv != null && teamSv != null && teamSv < 1) ? (1 - sv) / (1 - teamSv) : null };
     }
     // Team goals on back-to-backs vs normal, from its own schedule history.
     const games = (ctx.sched[T] || []).filter(g => seasonIdx(g.season) < S.seasonsBack);
@@ -770,12 +780,74 @@ function ctxExtras(ctx) {
     }
   }
 }
+/* League-wide numbers from every box score saved on this device for this season before the game date.
+   Falls back to just these two teams' games when not enough are saved yet. */
+function leagueBase(ctx) {
+  let pool = Object.values(BOX).filter(b => b && b.v === 3 && b.season === ctx.season && b.date < ctx.date), src = 'league';
+  if (pool.length < 40) {
+    src = 'these two teams'; const seen = new Set(); pool = [];
+    for (const T of [ctx.home, ctx.away]) for (const b of (ctx.box[T] || [])) if (!seen.has(b.id)) { seen.add(b.id); pool.push(b); }
+  }
+  let sa = 0, ga = 0, fG = 0, fS = 0, dG = 0, dS = 0; const sog = [], pimGames = [];
+  for (const b of pool) {
+    for (const side of [b.home, b.away]) if (side.sog != null) sog.push(side.sog);
+    const pimBy = {};
+    for (const p of Object.values(b.pl)) {
+      if (p.gk) { if (p.sa != null && p.ga != null) { sa += p.sa; ga += p.ga; } continue; }
+      if (p.s != null && p.g != null) { if (p.d) { dG += p.g; dS += p.s; } else { fG += p.g; fS += p.s; } }
+      if (p.pim != null) pimBy[p.t] = (pimBy[p.t] || 0) + p.pim;
+    }
+    for (const v of Object.values(pimBy)) pimGames.push(v);
+  }
+  return {
+    baseSrc: src, baseGames: pool.length,
+    shotBase: sog.length >= 6 ? mean(sog) : null,
+    svBase: sa >= 300 ? 1 - ga / sa : null,
+    shF: fS >= 300 ? fG / fS : null, shD: dS >= 150 ? dG / dS : null,
+    shBase: (fS + dS) >= 300 ? (fG + dG) / (fS + dS) : null,
+    pimBase: pimGames.length >= 6 ? mean(pimGames) : null,
+  };
+}
+/* Tonight's likely goalie vs the goalies his team has used this season. The team's goals-against already
+   includes its usual goalies, so only the DIFFERENCE is used (no double counting). Save % comes from his
+   game logs (many more shots than box scores) and is pulled hard toward average because it's streaky. */
+async function goalieQuality(ctx) {
+  const K = S.goalieShrinkShots, svL = ctx.svBase;
+  if (svL == null) return;
+  const seasons = seasonList(S.seasonsBack);
+  for (const T of [ctx.home, ctx.away]) {
+    const gk = ctx.goalie[T]; if (!gk) continue;
+    const ids = new Set(ctx.players.filter(p => p.team === T && p.pos === 'G').map(p => p.id));
+    for (const b of (ctx.box[T] || [])) for (const [pid, p] of Object.entries(b.pl)) if (p.t === T && p.gk) ids.add(+pid);
+    ids.add(gk.id);
+    let tSA = 0, tGA = 0, wSA = 0, wGA = 0, rSA = 0, rGA = 0;
+    await Promise.all([...ids].map(async id => {
+      const logs = await playerLogs(id, seasons, [2]); const seen = new Set();
+      for (const e of logs) {
+        if (!(e.gameDate < ctx.date) || e.shotsAgainst == null || e.goalsAgainst == null || seen.has(e.gameId)) continue;
+        seen.add(e.gameId);
+        if (e.season === ctx.season && (!e.teamAbbrev || e.teamAbbrev === T)) { tSA += e.shotsAgainst; tGA += e.goalsAgainst; }
+        if (id === gk.id) { const w = Math.pow(S.seasonDecay, seasonIdx(e.season)); wSA += w * e.shotsAgainst; wGA += w * e.goalsAgainst; rSA += e.shotsAgainst; rGA += e.goalsAgainst; }
+      }
+    }));
+    if (!rSA || !tSA) continue;
+    const sv = (wSA - wGA + K * svL) / (wSA + K), teamSv = (tSA - tGA + K * svL) / (tSA + K);
+    Object.assign(gk, { sv, teamSv, sa: rSA, rawSv: 1 - rGA / rSA, src: 'logs', ratio: teamSv < 1 ? (1 - sv) / (1 - teamSv) : null });
+  }
+}
+async function refreshCtx(ctx) {
+  CUR = ctx.season;
+  ctxExtras(ctx);
+  try { await goalieQuality(ctx); } catch (e) {}
+  ctx.tm = teamModel(ctx);
+}
 function oppRatios(ctx, opp) {
   const st = ctx.standings[opp], lg = ctx.league.gpg, bs = ctx.boxStats[opp];
-  const gp = st?.gamesPlayed;
+  const gp = st?.gamesPlayed, K = S.teamShrinkK;
+  const pull = x => (gp * x + K * lg) / (gp + K);   // early-season pull toward league average
   return {
-    goalsAllowed: (gp && lg) ? (st.goalAgainst / gp) / lg : null,
-    oppGoalsFor: (gp && lg) ? (st.goalFor / gp) / lg : null,
+    goalsAllowed: (gp && lg) ? pull(st.goalAgainst / gp) / lg : null,
+    oppGoalsFor: (gp && lg) ? pull(st.goalFor / gp) / lg : null,
     shotsAllowed: (bs && ctx.shotBase) ? bs.sa / ctx.shotBase : null,
     oppShotsFor: (bs && ctx.shotBase) ? bs.sf / ctx.shotBase : null,
   };
@@ -903,7 +975,7 @@ async function analyzePlayer(ctx, pl, mk, line, side) {
   const o = { line: M.first ? 0.5 : line, side: M.first ? 'over' : side, opp, isHome, oppRatio, goalie: !!M.goalie, isB2B: ctx.b2b ? !!ctx.b2b[team] : null };
   if (['goals', 'first', 'points', 'assists', 'ppp'].includes(mk)) {
     const gk = ctx.goalie?.[opp];
-    if (gk && gk.ratio != null) { o.goalieRatio = gk.ratio; o.goalieInfo = { name: gk.name, sv: gk.sv, rawSv: gk.rawSv, sa: gk.sa, why: gk.why, base: ctx.svBase }; }
+    if (gk && gk.ratio != null) { o.goalieRatio = gk.ratio; o.goalieInfo = { name: gk.name, sv: gk.sv, rawSv: gk.rawSv, sa: gk.sa, why: gk.why, base: ctx.svBase, teamSv: gk.teamSv }; }
     if (ctx.pim?.[opp] != null && ctx.pimBase) {
       const h = entries.filter(e => seasonIdx(e.season) < S.seasonsBack && e.ppp != null && e.pts != null);
       const ppp = h.reduce((s, e) => s + e.ppp, 0), pts = h.reduce((s, e) => s + e.pts, 0);
@@ -916,8 +988,10 @@ async function analyzePlayer(ctx, pl, mk, line, side) {
     if (!sr.error) {
       const hs = se.filter(e => seasonIdx(e.season) < S.seasonsBack && e.sh != null && e.gl != null);
       const sh = hs.reduce((s, e) => s + e.sh, 0), gl = hs.reduce((s, e) => s + e.gl, 0), K = 100;
-      const shPct = (gl + K * ctx.shBase) / (sh + K);
-      o.shotGoals = sr.lambda * shPct; o.shotInfo = { shotsLam: sr.lambda, shPct, rawPct: sh ? gl / sh : null, shots: sh, base: ctx.shBase };
+      // Pull toward the average for HIS position: defencemen score on far fewer of their shots than forwards.
+      const posBase = (pl.pos === 'D' ? ctx.shD : ctx.shF) ?? ctx.shBase;
+      const shPct = (gl + K * posBase) / (sh + K);
+      o.shotGoals = sr.lambda * shPct; o.shotInfo = { shotsLam: sr.lambda, shPct, rawPct: sh ? gl / sh : null, shots: sh, base: posBase, posLabel: pl.pos === 'D' ? 'defencemen' : 'forwards' };
     }
   }
   let res = analyzeEntries(entries, o);
@@ -945,7 +1019,7 @@ function firstScorer(ctx, gr, team) {
 /* =====================================================================
    TEAM / GAME MODEL
    ===================================================================== */
-function teamRate(st, venue, kind) {
+function teamRate(st, venue, kind, league) {
   const gp = st.gamesPlayed; if (!gp) return null;
   const K = S.shrinkK;
   const overall = (kind === 'For' ? st.goalFor : st.goalAgainst) / gp;
@@ -955,15 +1029,22 @@ function teamRate(st, venue, kind) {
   const split = (1 - S.teamSplitWeight) * overall + S.teamSplitWeight * vr;
   const lgp = st.l10GamesPlayed || 0;
   const l10 = lgp ? st['l10Goals' + kind] / lgp : split;
-  return { overall, vraw, vgp, vr, l10, lgp, blended: (1 - S.teamL10Weight) * split + S.teamL10Weight * l10 };
+  const raw = (1 - S.teamL10Weight) * split + S.teamL10Weight * l10;
+  // Early-season pull toward what an average team has on the same blend (team numbers are noisy over ~17 games).
+  const lg = league?.gpg, lv = league?.[venue]?.[kind] ?? lg;
+  const target = lg ? (1 - S.teamSplitWeight) * lg + S.teamSplitWeight * lv : null;
+  const blended = target && S.teamShrinkK > 0 ? (gp * raw + S.teamShrinkK * target) / (gp + S.teamShrinkK) : raw;
+  return { overall, vraw, vgp, vr, l10, lgp, raw, target, gp, blended };
 }
 function teamModel(ctx) {
-  const H = ctx.standings[ctx.home], A = ctx.standings[ctx.away], lg = ctx.league.gpg;
+  const H = ctx.standings[ctx.home], A = ctx.standings[ctx.away], lg = ctx.league.gpg, L = ctx.league;
   if (!H || !A) return { error: 'Standings not found for one of these teams.' };
   if (!H.gamesPlayed || !A.gamesPlayed || !lg) return { error: 'Not enough games played yet this season for the team model.' };
-  const hF = teamRate(H, 'home', 'For'), hA = teamRate(H, 'home', 'Against');
-  const aF = teamRate(A, 'road', 'For'), aA = teamRate(A, 'road', 'Against');
-  let lH = hF.blended * aA.blended / lg, lA = aF.blended * hA.blended / lg;
+  const hF = teamRate(H, 'home', 'For', L), hA = teamRate(H, 'home', 'Against', L);
+  const aF = teamRate(A, 'road', 'For', L), aA = teamRate(A, 'road', 'Against', L);
+  // Strength vs an average team on the same blend, times the league's real home / road scoring.
+  const rel = x => x.blended / (x.target || lg);
+  let lH = rel(hF) * rel(aA) * (L.home?.For || lg), lA = rel(aF) * rel(hA) * (L.road?.For || lg);
   const base = { lH, lA };
   const meet = (ctx.sched[ctx.home] || []).filter(g => (g.home === ctx.away || g.away === ctx.away) && seasonIdx(g.season) < S.h2hSeasonsBack);
   let h2h = null;
@@ -981,7 +1062,7 @@ function teamModel(ctx) {
     const fH = gA?.ratio != null ? clamp(1 + S.goalieStrength * (gA.ratio - 1), 0.7, 1.4) : 1;
     const fA = gH?.ratio != null ? clamp(1 + S.goalieStrength * (gH.ratio - 1), 0.7, 1.4) : 1;
     lH *= fH; lA *= fA;
-    ex.goalie = { fH, fA, gH: gH ? { name: gH.name, sv: gH.sv, why: gH.why } : null, gA: gA ? { name: gA.name, sv: gA.sv, why: gA.why } : null };
+    ex.goalie = { fH, fA, gH: gH ? { name: gH.name, sv: gH.sv, teamSv: gH.teamSv, why: gH.why } : null, gA: gA ? { name: gA.name, sv: gA.sv, teamSv: gA.teamSv, why: gA.why } : null };
   }
   if (ctx.b2b) {
     const r = { home: null, away: null };
@@ -989,16 +1070,34 @@ function teamModel(ctx) {
     if (ctx.b2b[ctx.away] && ctx.restSplit[ctx.away]) { const s = ctx.restSplit[ctx.away]; const a = 1 + S.restStrength * (s.gfRatio - 1), b = 1 + S.restStrength * (s.gaRatio - 1); lA *= a; lH *= b; r.away = { n: s.n, gf: a, ga: b }; }
     ex.rest = r;
   }
-  const MAXG = 13; const P = [];
-  let tot = 0;
-  for (let i = 0; i <= MAXG; i++) { P[i] = []; for (let j = 0; j <= MAXG; j++) { let v = poisPmf(i, lH) * poisPmf(j, lA); if (i === j) v *= S.drawInflation; P[i][j] = v; tot += v; } }
-  const states = []; const ot = S.otHomeShare;
-  for (let i = 0; i <= MAXG; i++) for (let j = 0; j <= MAXG; j++) {
-    const v = P[i][j] / tot; P[i][j] = v;
-    if (i !== j) states.push({ t: i, o: j, reg: true, p: v });
-    else { states.push({ t: i + 1, o: j, reg: false, p: v * ot }); states.push({ t: i, o: j + 1, reg: false, p: v * (1 - ot) }); }
+  // lH / lA are expected FINAL goals: standings goals already include OT/SO winners and late empty-net goals.
+  // So take those out to get regulation scoring, then add them back as their own events (measured from 8,082 games).
+  const MAXG = 13, ot = S.otHomeShare, e1 = S.enLead1, e2 = S.enLead2;
+  const regMat = (h, a) => {
+    const M = []; let tot = 0;
+    for (let i = 0; i <= MAXG; i++) { M[i] = []; for (let j = 0; j <= MAXG; j++) { let v = poisPmf(i, h) * poisPmf(j, a); if (i === j) v *= S.drawInflation; M[i][j] = v; tot += v; } }
+    for (let i = 0; i <= MAXG; i++) for (let j = 0; j <= MAXG; j++) M[i][j] /= tot;
+    return M;
+  };
+  let rH = lH, rA = lA, P;
+  for (let it = 0; it < 6; it++) {
+    P = regMat(rH, rA);
+    let tie = 0, h1 = 0, h2 = 0, a1 = 0, a2 = 0;
+    for (let i = 0; i <= MAXG; i++) for (let j = 0; j <= MAXG; j++) { const d = i - j, v = P[i][j]; if (d === 0) tie += v; else if (d === 1) h1 += v; else if (d === 2) h2 += v; else if (d === -1) a1 += v; else if (d === -2) a2 += v; }
+    rH = Math.max(0.05, lH - tie * ot - e1 * h1 - e2 * h2);
+    rA = Math.max(0.05, lA - tie * (1 - ot) - e1 * a1 - e2 * a2);
   }
-  return { lH, lA, base, h2h, hF, hA, aF, aA, lg, P, states, meet, ex };
+  P = regMat(rH, rA);
+  const states = [];
+  for (let i = 0; i <= MAXG; i++) for (let j = 0; j <= MAXG; j++) {
+    const v = P[i][j], m = i - j;
+    if (m === 0) { states.push({ t: i + 1, o: j, reg: false, p: v * ot }); states.push({ t: i, o: j + 1, reg: false, p: v * (1 - ot) }); continue; }
+    const e = Math.abs(m) === 1 ? e1 : Math.abs(m) === 2 ? e2 : 0;
+    if (e > 0) states.push({ t: i + (m > 0 ? 1 : 0), o: j + (m < 0 ? 1 : 0), reg: true, p: v * e });
+    states.push({ t: i, o: j, reg: true, p: v * (1 - e) });
+  }
+  ex.late = { e1, e2, rH, rA };
+  return { lH, lA, rH, rA, base, h2h, hF, hA, aF, aA, lg, P, states, meet, ex };
 }
 
 function teamPredicate(leg) {
@@ -1152,10 +1251,12 @@ function applyRes(l, res) {
   Object.assign(l, { p: res.p, pModel: res.pModel, pEmp: res.pEmp, push: res.push || 0, outcomes: res.outcomes || null, details: d, calcAt: Date.now() });
 }
 function tmSummary(tm) {
-  const top = [];
-  for (let i = 0; i < tm.P.length; i++) for (let j = 0; j < tm.P.length; j++) top.push({ h: i, a: j, p: tm.P[i][j] });
+  // Most likely scores after 60 minutes, including late goals (ties shown as ties).
+  const agg = {};
+  for (const s of tm.states) { const k = s.reg ? s.t + '-' + s.o : (Math.min(s.t, s.o)) + '-' + (Math.min(s.t, s.o)); agg[k] = (agg[k] || 0) + s.p; }
+  const top = Object.entries(agg).map(([k, p]) => { const [h, a] = k.split('-').map(Number); return { h, a, p }; });
   top.sort((a, b) => b.p - a.p);
-  return { ex: tm.ex, lH: tm.lH, lA: tm.lA, base: tm.base, h2h: tm.h2h, hF: tm.hF, hA: tm.hA, aF: tm.aF, aA: tm.aA, lg: tm.lg, top: top.slice(0, 8), draw: tm.P.reduce((s, r, i) => s + r[i], 0) };
+  return { rH: tm.rH, rA: tm.rA, ex: tm.ex, lH: tm.lH, lA: tm.lA, base: tm.base, h2h: tm.h2h, hF: tm.hF, hA: tm.hA, aF: tm.aF, aA: tm.aA, lg: tm.lg, top: top.slice(0, 8), draw: tm.P.reduce((s, r, i) => s + r[i], 0) };
 }
 
 function legEV(l) {
@@ -1503,8 +1604,8 @@ function playerDetailHTML(r) {
   h += `<tr><td><b>Blended rate</b> = Σ(rate × weight) ÷ Σ weight</td><td></td><td class="n"><b>${fx(r.blended)}</b></td><td></td></tr>`;
   h += `<tr><td>Ice-time factor ${r.toiInfo ? `(last ${S.winShort}: ${fx(r.toiInfo.recent, 1)} min vs ${fx(r.toiInfo.all, 1)} avg; strength ${S.toiStrength})` : '(not applied)'}</td><td></td><td class="n">×${fx(r.toiF, 3)}</td><td></td></tr>`;
   h += `<tr><td>Opponent factor ${r.oppRatio != null ? `(${OPP_LABEL[r.oppKey]} ${r.opp} = ${fx(r.oppRatio)}× baseline; strength ${S.oppStrength})` : '(not applied)'}</td><td></td><td class="n">×${fx(r.oppF, 3)}</td><td></td></tr>`;
-  if (r.shotInfo) { const s = r.shotInfo; h += `<tr><td>Goals from shots: ${fx(s.shotsLam)} expected shots × ${pct(s.shPct, 1)} shooting${s.rawPct != null ? ` (his real ${pct(s.rawPct, 1)} on ${s.shots} shots, pulled toward league ${pct(s.base, 1)})` : ''} = ${fx(s.fromShots)}. Mixed ${fx(1 - s.w)} × ${fx(s.direct)} + ${fx(s.w)} × ${fx(s.fromShots)}</td><td></td><td class="n">${fx((1 - s.w) * s.direct + s.w * s.fromShots)}</td><td></td></tr>`; }
-  if (r.goalieInfo) { const g = r.goalieInfo; h += `<tr><td>Other goalie: ${esc(g.name)} (guess: ${esc(g.why)}) saves ${pct(g.sv, 1)} vs ${pct(g.base, 1)} average${g.rawSv != null ? `; real ${pct(g.rawSv, 1)} on ${g.sa} shots` : ''}; strength ${S.goalieStrength}</td><td></td><td class="n">×${fx(r.gkF, 3)}</td><td></td></tr>`; }
+  if (r.shotInfo) { const s = r.shotInfo; h += `<tr><td>Goals from shots: ${fx(s.shotsLam)} expected shots × ${pct(s.shPct, 1)} shooting${s.rawPct != null ? ` (his real ${pct(s.rawPct, 1)} on ${s.shots} shots, pulled toward the ${pct(s.base, 1)} average for ${s.posLabel || 'skaters'})` : ''} = ${fx(s.fromShots)}. Mixed ${fx(1 - s.w)} × ${fx(s.direct)} + ${fx(s.w)} × ${fx(s.fromShots)}</td><td></td><td class="n">${fx((1 - s.w) * s.direct + s.w * s.fromShots)}</td><td></td></tr>`; }
+  if (r.goalieInfo) { const g = r.goalieInfo; h += `<tr><td>Other goalie: ${esc(g.name)} (guess: ${esc(g.why)}) saves ${pct(g.sv, 1)} after pulling toward average${g.rawSv != null ? ` (real ${pct(g.rawSv, 1)} on ${g.sa} shots)` : ''}, vs ${pct(g.teamSv, 1)} for his team's goalies this season — their goals-against already counts those; strength ${S.goalieStrength}</td><td></td><td class="n">×${fx(r.gkF, 3)}</td><td></td></tr>`; }
   if (r.penInfo) h += `<tr><td>Penalties: ${r.opp} takes ${fx(r.penInfo.ratio)}× normal penalty minutes; ${pct(r.penInfo.share, 0)} of his points come on the power play; strength ${S.penStrength}</td><td></td><td class="n">×${fx(r.penF, 3)}</td><td></td></tr>`;
   if (r.isB2B) h += `<tr><td colspan="4" class="small warn">😴 His team played last night (back-to-back).</td></tr>`;
   h += `<tr><td><b>Expected value λ</b></td><td></td><td class="n"><b>${fx(r.lambda)}</b></td><td></td></tr></table></div>`;
@@ -1537,21 +1638,22 @@ function teamDetailHTML(r, g) {
   }
   const t = r.tmInfo || (r.tm ? tmSummary(r.tm) : null);
   if (t) {
-    const rr = (x, v) => x ? `${fx(x.overall)} overall · ${fx(x.vraw)} ${v} (${x.vgp} gp, shrunk ${fx(x.vr)}) · ${fx(x.l10)} last ${x.lgp} → <b>${fx(x.blended)}</b>` : '–';
+    const rr = (x, v) => x ? `${fx(x.overall)} overall · ${fx(x.vraw)} ${v} (${x.vgp} gp, shrunk ${fx(x.vr)}) · ${fx(x.l10)} last ${x.lgp} → ${fx(x.raw ?? x.blended)}${x.target != null && S.teamShrinkK > 0 ? `, pulled toward average ${fx(x.target)} (${x.gp} games + ${S.teamShrinkK} average)` : ''} → <b>${fx(x.blended)}</b>` : '–';
     h += `<h3>Goal model</h3><div class="tw"><table>
       <tr><td>${g?.home || 'Home'} goals for</td><td class="wrap">${rr(t.hF, 'home')}</td></tr>
       <tr><td>${g?.home || 'Home'} goals against</td><td class="wrap">${rr(t.hA, 'home')}</td></tr>
       <tr><td>${g?.away || 'Away'} goals for</td><td class="wrap">${rr(t.aF, 'road')}</td></tr>
       <tr><td>${g?.away || 'Away'} goals against</td><td class="wrap">${rr(t.aA, 'road')}</td></tr>
       <tr><td>League average</td><td>${fx(t.lg)} per team per game</td></tr>
-      <tr><td>Expected goals before H2H</td><td>${g?.home} ${fx(t.base.lH)} = home GF × away GA ÷ league · ${g?.away} ${fx(t.base.lA)}</td></tr>
+      <tr><td>Expected goals before H2H</td><td class="wrap">${g?.home} ${fx(t.base.lH)} = (home attack vs average) × (away defence vs average) × league home scoring · ${g?.away} ${fx(t.base.lA)}</td></tr>
       ${t.h2h ? `<tr><td>Head-to-head (${t.h2h.n} meetings)</td><td class="wrap">${g?.home} avg ${fx(t.h2h.tg)}, ${g?.away} avg ${fx(t.h2h.og)} → shrunk ${fx(t.h2h.sH)} / ${fx(t.h2h.sA)}, weight ${t.h2h.w}</td></tr>` : ''}
-      ${t.ex?.goalie ? `<tr><td>Goalies (guess)</td><td class="wrap">${g?.home}: ${esc(t.ex.goalie.gH?.name || '?')} ${t.ex.goalie.gH ? pct(t.ex.goalie.gH.sv, 1) : ''} · ${g?.away}: ${esc(t.ex.goalie.gA?.name || '?')} ${t.ex.goalie.gA ? pct(t.ex.goalie.gA.sv, 1) : ''} → ${g?.home} goals ×${fx(t.ex.goalie.fH, 3)}, ${g?.away} goals ×${fx(t.ex.goalie.fA, 3)}</td></tr>` : ''}
+      ${t.ex?.goalie ? `<tr><td>Goalies (guess)</td><td class="wrap">${g?.home}: ${esc(t.ex.goalie.gH?.name || '?')} ${t.ex.goalie.gH ? `${pct(t.ex.goalie.gH.sv, 1)} vs team ${pct(t.ex.goalie.gH.teamSv, 1)}` : ''} · ${g?.away}: ${esc(t.ex.goalie.gA?.name || '?')} ${t.ex.goalie.gA ? `${pct(t.ex.goalie.gA.sv, 1)} vs team ${pct(t.ex.goalie.gA.teamSv, 1)}` : ''} → ${g?.home} goals ×${fx(t.ex.goalie.fH, 3)}, ${g?.away} goals ×${fx(t.ex.goalie.fA, 3)} <span class="muted">(only the difference from each team's usual goalies — their goals-against already counts those)</span></td></tr>` : ''}
       ${t.ex?.rest?.home ? `<tr><td>😴 ${g?.home} back-to-back</td><td>their goals ×${fx(t.ex.rest.home.gf, 3)}, goals against ×${fx(t.ex.rest.home.ga, 3)} (from ${t.ex.rest.home.n} past back-to-backs)</td></tr>` : ''}
       ${t.ex?.rest?.away ? `<tr><td>😴 ${g?.away} back-to-back</td><td>their goals ×${fx(t.ex.rest.away.gf, 3)}, goals against ×${fx(t.ex.rest.away.ga, 3)} (from ${t.ex.rest.away.n} past back-to-backs)</td></tr>` : ''}
       <tr><td><b>Final expected goals</b></td><td><b>${g?.home} ${fx(t.lH)} · ${g?.away} ${fx(t.lA)}</b></td></tr>
+      ${t.ex?.late ? `<tr><td>Late goals &amp; OT</td><td class="wrap">Final goals include OT/SO winners and empty-net goals, so regulation scoring is ${g?.home} ${fx(t.ex.late.rH)} · ${g?.away} ${fx(t.ex.late.rA)}; then ${pct(t.ex.late.e1, 0)} of 1-goal leads and ${pct(t.ex.late.e2, 0)} of 2-goal leads add a late goal (measured from 8,082 games).</td></tr>` : ''}
       <tr><td>Regulation tie chance</td><td>${pct(t.draw)} (OT/SO split ${S.otHomeShare} home)</td></tr></table></div>
-      <h3>Most likely regulation scores</h3><div class="tw"><table><tr><th>${g?.away}–${g?.home}</th><th class="n">P</th></tr>${t.top.map(x => `<tr><td>${x.a}–${x.h}</td><td class="n">${pct(x.p)}</td></tr>`).join('')}</table></div>`;
+      <h3>Most likely scores after 60 minutes</h3><div class="tw"><table><tr><th>${g?.away}–${g?.home}</th><th class="n">P</th></tr>${t.top.map(x => `<tr><td>${x.a}–${x.h}</td><td class="n">${pct(x.p)}</td></tr>`).join('')}</table></div>`;
   }
   if (r.firstTeam) h += `<p class="small">Team to score first = ${fx(r.firstTeam.lT)} ÷ ${fx(r.firstTeam.lt)} × (1 − e^(−${fx(r.firstTeam.lt)})) = <b>${pct(r.p)}</b>. Model only — first-goal history isn't loaded.</p>`;
   else h += `<p class="small">Model ${pct(r.pModel)}. History ${r.hits}/${r.decided} over each team's last ${S.winLong} games → shrunk ${pct(r.pEmp)}. Final = ${fx(1 - S.empWeight)} × model + ${fx(S.empWeight)} × history = <b>${pct(r.p)}</b>.</p>`;
@@ -1765,10 +1867,26 @@ async function finderGameLegs(ctx, onProg = () => {}) {
   onProg(1);
   return legs;
 }
+/* Correct a chance using the last 🧪 test: when the app said ~X% before, how often did it really happen?
+   Picking the best of thousands favours bets the app over-guessed; this pulls them back toward reality. */
+function calibP(p) {
+  const c = S.useCalib && state.bt && state.bt.v >= 2 ? state.bt.calib : null;
+  if (!c || c.n < 300) return p;
+  const pts = c.bins.filter(b => b.n >= 20).map(b => ({ x: b.pred, y: b.pred + (b.act - b.pred) * b.n / (b.n + 150) }));
+  if (pts.length < 3) return p;
+  for (let i = 1; i < pts.length; i++) if (pts[i].y < pts[i - 1].y) pts[i].y = pts[i - 1].y;
+  let y; const L = pts[pts.length - 1];
+  if (p <= pts[0].x) y = p + (pts[0].y - pts[0].x);
+  else if (p >= L.x) y = p + (L.y - L.x);
+  else { let i = 1; while (pts[i].x < p) i++; const a = pts[i - 1], b = pts[i]; y = a.y + (p - a.x) / (b.x - a.x) * (b.y - a.y); }
+  return clamp(y, 0.001, 0.999);
+}
 function finderBuild(cands, opts = {}) {
   const k = S.finderLegs, sgp = S.finderMode === 'sgp';
   const types = new Set(S.finderTypes), variety = !S.finderHighest;
-  const sorted = cands.filter(c => types.has(c.market) && (S.finderUnders || !(c.kind === 'player' && c.side === 'under')) && c.p >= S.finderMinLegProb && c.p <= S.finderMaxLegProb).sort((a, b) => b.p - a.p);
+  for (const c of cands) c.pa = opts.noCalib ? c.p : calibP(c.p);
+  const corrected = cands.some(c => Math.abs(c.pa - c.p) > 1e-9);
+  const sorted = cands.filter(c => types.has(c.market) && (S.finderUnders || !(c.kind === 'player' && c.side === 'under')) && c.pa >= S.finderMinLegProb && c.pa <= S.finderMaxLegProb).sort((a, b) => b.pa - a.pa);
   const perTypeCap = variety ? Math.max(5, Math.ceil(S.finderPoolSize / Math.max(1, types.size))) : Infinity;
   // Same-game mode: build a separate pool for each game so every game gets its own best bets.
   const groups = sgp ? Object.values(sorted.reduce((m, c) => ((m[c.gameId] = m[c.gameId] || []).push(c), m), {})) : [sorted];
@@ -1778,7 +1896,7 @@ function finderBuild(cands, opts = {}) {
     // The most-likely parlays that still pay enough are built from legs near this chance (≈75% each for 3 legs at 2.4×),
     // so pick the pool around it instead of just the very-likely bets, which can't reach the payout together.
     const target = Math.pow(1 / (S.finderMinPayout * S.finderCushion), 1 / k);
-    const ordered = group.slice().sort((a, b) => Math.abs(a.p - target) - Math.abs(b.p - target));
+    const ordered = group.slice().sort((a, b) => Math.abs(a.pa - target) - Math.abs(b.pa - target));
     const seen = new Set(), pool = [], perSubj = {}, typeCount = {};
     for (const c of ordered) {
       const bet = blockKey(c) + '|' + c.line + '|' + c.side; if (seen.has(bet)) continue;
@@ -1803,7 +1921,7 @@ function finderBuild(cands, opts = {}) {
         for (const l of legs) { per[l.gameId] = (per[l.gameId] || 0) + 1; if (per[l.gameId] > maxPerGame) return; }
         if (new Set(legs.map(finderKey)).size < legs.length) return;
         if (variety && new Set(legs.map(l => l.market)).size < legs.length) return;
-        const ps = legs.map(l => l.p), rm = idx.map(a => idx.map(b => rho[a][b]));
+        const ps = legs.map(l => l.pa), rm = idx.map(a => idx.map(b => rho[a][b]));
         const jp = jointProb(ps, rm);
         if (!(jp.p > 0)) return;
         const fair = 1 / jp.p;
@@ -1830,12 +1948,12 @@ function finderBuild(cands, opts = {}) {
   return {
     pool: poolTotal, combos: out.length,
     cards: picked.map(o => ({
-      id: uid(), sig: parlaySig(o.legs), P: o.P, pInd: o.pInd, factor: o.factor, fair: o.fair, price: null,
+      id: uid(), sig: parlaySig(o.legs), P: o.P, pInd: o.pInd, factor: o.factor, fair: o.fair, price: null, calib: corrected,
       sgp: o.legs.every(l => l.gameId === o.legs[0].gameId) ? `${o.legs[0].game.away} @ ${o.legs[0].game.home}` : null,
       pairs: o.legs.flatMap((a, ai) => o.legs.slice(ai + 1).filter(b => a.gameId === b.gameId).map(b => { const r = pairInfo.get(a.id + '|' + b.id) || { rho: 0, src: '' }; return { a: plainLabel(a), b: plainLabel(b), rho: r.rho, src: r.src }; })),
       legs: o.legs.map(c => {
         if (!opts.keepRes) state.foundRes[c.id] = c;
-        return { id: c.id, g: gradeInfo(c), label: plainLabel(c), look: lookFor(c), p: c.p, hit: legHitText(c), game: `${c.game.away} @ ${c.game.home}`, start: c.game.start, goalie: !!c.goalie, kind: c.kind, bk: blockKey(c), hideLabel: c.kind === 'player' ? `${c.subjectName} ${PM[c.market].label.toLowerCase()}` : plainLabel(c) };
+        return { id: c.id, g: gradeInfo(c), label: plainLabel(c), look: lookFor(c), p: c.pa, p0: c.p, hit: legHitText(c), game: `${c.game.away} @ ${c.game.home}`, start: c.game.start, goalie: !!c.goalie, kind: c.kind, bk: blockKey(c), hideLabel: c.kind === 'player' ? `${c.subjectName} ${PM[c.market].label.toLowerCase()}` : plainLabel(c) };
       }),
     })),
   };
@@ -1913,13 +2031,21 @@ async function runFinder() {
     if (!games.length) {
       state.found = { date, created: Date.now(), cards: [], games: 0, none: true }; saveFound(); finderProg('', 0); const p = $('#fProg'); if (p) p.innerHTML = ''; renderFound(); return;
     }
-    const cands = [], notes = [];
+    // Load every game first, so league averages and goalie numbers use the whole night's box scores.
+    const ctxs = [];
     for (let i = 0; i < games.length; i++) {
-      const g = games[i], label = `Checking game ${i + 1} of ${games.length}: ${g.away} @ ${g.home}`;
-      finderProg(label, 0.05 + 0.85 * i / games.length);
+      const g = games[i];
+      finderProg(`Loading game ${i + 1} of ${games.length}: ${g.away} @ ${g.home}`, 0.05 + 0.4 * i / games.length);
+      try { ctxs.push(await loadCtx(g)); } catch (e) { toast(`${g.away} @ ${g.home}: ${e.message}`); }
+    }
+    finderProg('Working out league averages and goalies…', 0.46);
+    for (const ctx of ctxs) await refreshCtx(ctx);
+    const cands = [], notes = [];
+    for (let i = 0; i < ctxs.length; i++) {
+      const ctx = ctxs[i], g = ctx.game, label = `Checking game ${i + 1} of ${ctxs.length}: ${g.away} @ ${g.home}`;
+      finderProg(label, 0.5 + 0.45 * i / ctxs.length);
       try {
-        const ctx = await loadCtx(g);
-        cands.push(...await finderGameLegs(ctx, f => finderProg(label, 0.05 + 0.85 * (i + f) / games.length)));
+        cands.push(...await finderGameLegs(ctx, f => finderProg(label, 0.5 + 0.45 * (i + f) / ctxs.length)));
         notes.push({ game: `${g.away} @ ${g.home}`, b2b: [g.away, g.home].filter(T => ctx.b2b?.[T]), goalies: [g.away, g.home].map(T => ctx.goalie?.[T] ? { T, name: ctx.goalie[T].name, why: ctx.goalie[T].why, sv: ctx.goalie[T].sv } : null).filter(Boolean) });
       } catch (e) { toast(`${g.away} @ ${g.home}: ${e.message}`); }
     }
@@ -1942,6 +2068,7 @@ function renderFound() {
   if (f.none) { el.innerHTML = `<div class="card">No games left to bet on for ${esc(f.date)} — they've all started or there are none. Try another day.</div>`; return; }
   let h = `<div class="card small"><b>${f.cards.length} parlays</b> from ${f.games} game${f.games === 1 ? '' : 's'} on ${esc(f.date)} · checked ${f.bets} bets · found ${new Date(f.created).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}<br>
     ⚠️ Before you bet: make sure each player is playing tonight${f.cards.some(c => c.legs.some(l => l.goalie)) ? ' and each goalie is starting' : ''}.<br>
+    ${f.cards.some(c => c.calib) ? `🎯 Chances corrected using your 🧪 test from ${new Date(state.bt.at).toLocaleDateString()}.<br>` : (S.useCalib ? '🎯 Run <b>🧪 Test it</b> (in 📋 My parlays) so the app can correct its chances using real results.<br>' : '')}
     If bet365 doesn't offer a bet, tap <b>🚫 Not on bet365</b> under it and the list rebuilds without it.
     ${(f.notes || []).some(n => n.b2b.length) ? `<br>😴 Tired teams (played last night): <b>${f.notes.flatMap(n => n.b2b).join(', ')}</b>` : ''}
     ${(f.notes || []).length ? `<details style="margin-top:6px"><summary>🥅 Goalie guesses — check these before betting</summary>${f.notes.map(n => `<div>${esc(n.game)}: ${n.goalies.map(g => `${esc(g.T)} ${esc(g.name)} <span class="muted">(${esc(g.why)}${g.sv != null ? `, saves ${pct(g.sv, 1)}` : ''})</span>`).join(' · ') || '<span class="muted">no guess</span>'}</div>`).join('')}</details>` : ''}
@@ -2008,7 +2135,7 @@ function fWhyHTML(i) {
   const c = state.found.cards[i];
   let h = `<h2>Why parlay ${i + 1}?</h2><p class="small">Each bet's chance comes from the player's or team's past games, their recent form, the opponent, and home/road. Tap a bet for the full breakdown.</p><div class="tw"><table><tr><th>Bet</th><th class="n">Chance</th></tr>`;
   c.legs.forEach((l, j) => {
-    h += `<tr><td class="wrap">${esc(l.label)}<br><span class="muted small">${esc(l.hit || '')}</span>${state.foundRes[l.id] ? `<br><button class="b s" data-act="fDetail" data-i="${i}" data-j="${j}">Full breakdown</button>` : ''}</td><td class="n">${pct(l.p)}</td></tr>`;
+    h += `<tr><td class="wrap">${esc(l.label)}<br><span class="muted small">${esc(l.hit || '')}</span>${state.foundRes[l.id] ? `<br><button class="b s" data-act="fDetail" data-i="${i}" data-j="${j}">Full breakdown</button>` : ''}</td><td class="n">${pct(l.p)}${l.p0 != null && Math.abs(l.p0 - l.p) > 0.0005 ? `<br><span class="muted small">raw ${pct(l.p0)}, corrected by test</span>` : ''}</td></tr>`;
   });
   h += `</table></div><h3>Putting them together</h3><p class="small">${c.legs.map(l => pct(l.p)).join(' × ')} = ${pct(c.pInd, 1)} if the bets don't affect each other.`;
   if (c.pairs.length) h += `<br>Some bets are from the same game, so they're adjusted for how often they hit together in past games:</p><div class="tw"><table><tr><th>Bets</th><th class="n">Link</th><th>Based on</th></tr>${c.pairs.map(p => `<tr><td class="wrap">${esc(p.a)} + ${esc(p.b)}</td><td class="n">${fx(p.rho)}</td><td class="wrap small">${esc(p.src)}</td></tr>`).join('')}</table></div><p class="small">`;
@@ -2084,7 +2211,12 @@ const TUNE_STEPS = [
   ['goalieStrength', [0, 0.25, 0.5, 0.75, 1]],
   ['penStrength', [0, 0.5, 1]],
   ['wRest', [0, 5, 10, 20]],
+  ['teamShrinkK', [10, 20, 30, 45, 70]],
+  ['teamL10Weight', [0, 0.15, 0.3, 0.5]],
+  ['teamSplitWeight', [0, 0.25, 0.5, 0.75, 1]],
+  ['restStrength', [0, 0.5, 1]],
 ];
+const TEAM_KEYS = ['teamShrinkK', 'teamL10Weight', 'teamSplitWeight', 'h2hTeamWeight', 'shrinkK', 'goalieStrength', 'restStrength', 'enLead1', 'enLead2', 'drawInflation', 'otHomeShare'];
 const W_MIX = { recent: { wSeason: 15, wShort: 25, wMid: 30, wLong: 20 }, balanced: { wSeason: 30, wShort: 15, wMid: 25, wLong: 20 }, season: { wSeason: 50, wShort: 5, wMid: 15, wLong: 25 } };
 function dateAdd(d, n) { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + n); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); }
 function btProg(text, f) {
@@ -2092,6 +2224,11 @@ function btProg(text, f) {
   el.innerHTML = f == null ? '' : `<div class="pbar"><div style="width:${Math.round(clamp(f, 0, 1) * 100)}%"></div></div><div class="small muted">${esc(text)}</div>`;
 }
 function legP(l) {
+  if (l.kind === 'team' && l.ctx && l.spec) {   // team bets: rebuild the game model with the settings being tried
+    const sig = TEAM_KEYS.map(k => S[k]).join('|');
+    if (l.ctx._tmSig !== sig) { CUR = l.ctx.season; l.ctx.tm = teamModel(l.ctx); l.ctx._tmSig = sig; }
+    const r = analyzeTeam(l.ctx, l.spec); return r.error ? l.p : r.p;
+  }
   if (l.kind !== 'player' || !l.entries) return l.p;
   CUR = l.season;
   const r = analyzeEntries(l.entries, l.o);
@@ -2121,14 +2258,20 @@ async function runBacktest() {
       for (const g of (wk?.games || [])) if ((g.gameType === 2 || g.gameType === 3) && ['OFF', 'FINAL'].includes(g.gameState)) allGames.push({ id: g.id, date, season: g.season, start: g.startTimeUTC, home: g.homeTeam.abbrev, away: g.awayTeam.abbrev, homeName: g.homeTeam.commonName?.default || g.homeTeam.abbrev, awayName: g.awayTeam.commonName?.default || g.awayTeam.abbrev });
     }
     if (!allGames.length) throw new Error('No finished games found in those days.');
-    const byDate = {};
+    const byDate = {}, ctxs = [];
     for (const g of allGames) {
-      gi++;
-      const label = `Replaying game ${gi} of ${allGames.length}: ${g.away} @ ${g.home} (${g.date})`;
-      btProg(label, 0.05 + 0.75 * (gi - 1) / allGames.length);
+      gi++; btProg(`Loading game ${gi} of ${allGames.length}: ${g.away} @ ${g.home} (${g.date})`, 0.03 + 0.35 * (gi - 1) / allGames.length);
+      try { ctxs.push(await loadCtx(g)); } catch (e) { toast(`${g.away} @ ${g.home}: ${e.message}`); }
+    }
+    btProg('Working out league averages and goalies…', 0.39);
+    for (const ctx of ctxs) await refreshCtx(ctx);
+    let ci = 0;
+    for (const ctx of ctxs) {
+      ci++; const g = ctx.game;
+      const label = `Replaying game ${ci} of ${ctxs.length}: ${g.away} @ ${g.home} (${g.date})`;
+      btProg(label, 0.4 + 0.4 * (ci - 1) / ctxs.length);
       try {
-        const ctx = await loadCtx(g);
-        const cands = await finderGameLegs(ctx, f => btProg(label, 0.05 + 0.75 * (gi - 1 + f) / allGames.length));
+        const cands = await finderGameLegs(ctx, f => btProg(label, 0.4 + 0.4 * (ci - 1 + f) / ctxs.length));
         const fin = await finalGame({ gameId: g.id, home: g.home, season: ctx.season });
         if (!fin) continue;
         const box = await api(`v1/gamecenter/${g.id}/boxscore`, 864e5);
@@ -2138,6 +2281,7 @@ async function runBacktest() {
           const y = r === 'won' ? 1 : 0;
           const l = { p: c.p, y, kind: c.kind, market: c.market, gameId: g.id, season: ctx.season };
           if (c.kind === 'player' && c.res?._entries && c.res?._o) { l.entries = c.res._entries; l.o = c.res._o; }
+          if (c.kind === 'team') { l.ctx = ctx; l.spec = { market: c.market, team: c.team, side: c.side, line: c.line }; }
           c._y = y; legs.push(l);
         }
         (byDate[g.date] = byDate[g.date] || []).push(...cands.filter(c => c._y != null));
@@ -2147,16 +2291,21 @@ async function runBacktest() {
 
     btProg('Checking the app\'s top parlays…', 0.82);
     for (const [date, cands] of Object.entries(byDate)) {
-      const b = finderBuild(cands, { ignoreUsed: true, keepRes: true });
+      const b = finderBuild(cands, { ignoreUsed: true, keepRes: true, noCalib: true });
       const yById = Object.fromEntries(cands.map(c => [c.id, c._y]));
       for (const card of b.cards) parlays.push({ date, P: card.P, hit: card.legs.every(l => yById[l.id] === 1) ? 1 : 0 });
     }
 
-    // Calibration with current settings
-    const bins = Array.from({ length: 10 }, (_, i) => ({ lo: i / 10, n: 0, sp: 0, sy: 0 }));
-    for (const l of legs) { const b = bins[Math.min(9, Math.floor(l.p * 10))]; b.n++; b.sp += l.p; b.sy += l.y; }
+    // Report only on bets the finder can actually use; build the correction curve from every bet.
+    const calibBins = (ls, pf) => {
+      const bins = Array.from({ length: 10 }, (_, i) => ({ lo: i / 10, n: 0, sp: 0, sy: 0 }));
+      for (const l of ls) { const p = pf(l); const b = bins[Math.min(9, Math.floor(p * 10))]; b.n++; b.sp += p; b.sy += l.y; }
+      return bins.filter(b => b.n).map(b => ({ lo: b.lo, n: b.n, pred: b.sp / b.n, act: b.sy / b.n }));
+    };
+    const usable = legs.filter(l => l.p >= S.finderMinLegProb && l.p <= S.finderMaxLegProb);
     const mk = {};
-    for (const l of legs) { const m = mk[l.market] = mk[l.market] || { n: 0, sp: 0, sy: 0 }; m.n++; m.sp += l.p; m.sy += l.y; }
+    for (const l of usable) { const m = mk[l.market] = mk[l.market] || { n: 0, sp: 0, sy: 0 }; m.n++; m.sp += l.p; m.sy += l.y; }
+    const calib = { n: legs.length, bins: calibBins(legs, l => l.p) };
 
     // Tuning: learn on half the games, check on the other half
     const train = legs.filter(l => l.gameId % 2 === 0), test = legs.filter(l => l.gameId % 2 === 1);
@@ -2178,12 +2327,14 @@ async function runBacktest() {
     }
     const tunedTest = logLoss(test);
     const tuned = {}; for (const [key] of TUNE_STEPS) if (key === 'wMix') Object.assign(tuned, W_MIX[best.wMix]); else tuned[key] = best[key];
+    const calibTuned = { n: legs.length, bins: calibBins(legs, legP) };
     S = Object.assign({}, saved);
+    for (const l of legs) if (l.ctx) l.ctx._tmSig = null;
 
     const changes = Object.entries(tuned).filter(([k, v]) => S[k] !== v).map(([k, v]) => ({ k, from: S[k], to: v }));
     state.bt = {
-      at: Date.now(), days, games: allGames.length, n: legs.length,
-      bins: bins.filter(b => b.n).map(b => ({ lo: b.lo, n: b.n, pred: b.sp / b.n, act: b.sy / b.n })),
+      v: 2, at: Date.now(), days, games: allGames.length, n: legs.length, nUsable: usable.length, calib, calibTuned,
+      bins: calibBins(usable, l => l.p),
       markets: Object.entries(mk).map(([m, v]) => ({ m, n: v.n, pred: v.sp / v.n, act: v.sy / v.n })).sort((a, b) => b.n - a.n),
       parlays: { n: parlays.length, exp: parlays.reduce((s, p) => s + p.P, 0), won: parlays.reduce((s, p) => s + p.hit, 0) },
       tune: { baseTest, tunedTest, gain: baseTest > 0 ? (baseTest - tunedTest) / baseTest : 0, tuned, changes, testN: test.length },
@@ -2203,7 +2354,10 @@ function renderBacktest() {
   const el = $('#btOut'), b = state.bt; if (!el) return;
   if (!b) { el.innerHTML = ''; return; }
   const ok = (pred, act, n) => n < 30 ? '🤷' : Math.abs(pred - act) <= 0.05 ? '✅' : act < pred ? '⚠️ too hopeful' : '⚠️ too careful';
-  let h = `<p class="small">Replayed <b>${b.games} games</b> from the last ${b.days} days and checked <b>${b.n.toLocaleString()} bets</b>, using only stats from before each game.</p>`;
+  let h = '';
+  if (!b.v) h += `<div class="verdict bad" style="font-size:16px">⚠️ Old test<span>This test ran before the Nov 10 fixes, when it could peek at that night's results. Tap 🧪 Test it again.</span></div>`;
+  h += `<p class="small">Replayed <b>${b.games} games</b> from the last ${b.days} days and checked <b>${b.n.toLocaleString()} bets</b>, using only stats from before each game${b.nUsable != null ? ` (${b.nUsable.toLocaleString()} of them are the kind the finder can use — the tables below show only those)` : ''}.</p>`;
+  if (b.v >= 2) h += `<p class="small">🎯 Chance correction: <b>${S.useCalib && b.calib?.n >= 300 ? 'ON' : 'OFF'}</b> — ${S.useCalib ? (b.calib?.n >= 300 ? 'the finder nudges its chances toward these real results.' : 'needs at least 300 checked bets; test more days.') : 'turned off in Settings.'}</p>`;
   h += `<h3>When the app said… it really won</h3><div class="tw"><table><tr><th>App said</th><th class="n">Bets</th><th class="n">Really won</th><th></th></tr>`;
   for (const x of b.bins) h += `<tr><td>${Math.round(x.lo * 100)}–${Math.round(x.lo * 100) + 10}% (avg ${pct(x.pred, 0)})</td><td class="n">${x.n}</td><td class="n"><b>${pct(x.act, 0)}</b></td><td>${ok(x.pred, x.act, x.n)}</td></tr>`;
   h += `</table></div><p class="small muted">✅ = within 5 points. ⚠️ too hopeful = the app guessed higher than reality. 🤷 = not enough bets to tell.</p>`;
@@ -2402,6 +2556,7 @@ function onClick(ev) {
     case 'btApply': {
       const t = state.bt?.tune; if (!t) break;
       Object.assign(S, t.tuned); saveSettings();
+      if (state.bt.calibTuned) state.bt.calib = state.bt.calibTuned;   // correction curve that matches the new settings
       state.bt.tune.changes = []; LS.set('pv_bt', state.bt);
       if (state.findCands) finderRebuild();
       toast('New settings saved. Tap Find again to use them.'); renderBacktest(); break;

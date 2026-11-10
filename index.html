@@ -554,11 +554,20 @@ const NHL = 'https://api-web.nhle.com/';
 const DEFAULT_PROXY = 'https://nhl.justinharrisonreid.workers.dev'; // used when Settings → Proxy URL is blank
 const memCache = new Map(), inflight = new Map();
 let directWorks = null;
-async function rawFetch(url) {
-  const r = await fetch(url);
-  if (!r.ok) { const e = new Error('HTTP ' + r.status + ' for ' + url); e.status = r.status; throw e; }
-  return r.json();
+// Busy (429), server errors (5xx), dropped connections and cut-off replies are tried again, waiting longer each time.
+async function rawFetch(url, tries = 1) {
+  for (let i = 0; ; i++) {
+    try {
+      const r = await fetch(url);
+      if (!r.ok) { const e = new Error('HTTP ' + r.status + ' for ' + url); e.status = r.status; throw e; }
+      return await r.json();
+    } catch (e) {
+      if (i + 1 >= tries || (e.status && e.status !== 429 && e.status < 500)) throw e;
+      await new Promise(res => setTimeout(res, 800 * Math.pow(2, i) + Math.random() * 400));
+    }
+  }
 }
+let apiFails = 0;   // downloads that still failed after retrying (not counting "not found")
 function netError() {
   return new Error('Could not reach NHL data. Your browser may be blocking direct calls — set up the free proxy in Settings → Proxy setup, then set Connection mode.');
 }
@@ -570,7 +579,7 @@ async function api(path, ttl = 600000) {
     const mode = S.connMode; let v;
     const proxy = (S.proxyUrl || DEFAULT_PROXY).trim().replace(/\/+$/, '');
     if (mode !== 'proxy' && !(directWorks === false && proxy && mode === 'auto')) {
-      try { v = await rawFetch(NHL + path); directWorks = true; }
+      try { v = await rawFetch(NHL + path, directWorks ? 4 : 1); directWorks = true; }
       catch (e) {
         if (e.status) throw e;
         if (directWorks !== true) directWorks = false;
@@ -579,13 +588,14 @@ async function api(path, ttl = 600000) {
     }
     if (v === undefined) {
       if (!proxy) throw netError();
-      try { v = await rawFetch(proxy + '/' + path); }
+      try { v = await rawFetch(proxy + '/' + path, 4); }
       catch (e) { if (e.status) throw e; throw new Error('Proxy did not respond. Check the Proxy URL in Settings.'); }
     }
     memCache.set(path, { t: Date.now(), v });
     return v;
   })();
   inflight.set(path, pr);
+  pr.catch(e => { if (e.status !== 404) apiFails++; });
   try { return await pr; } finally { inflight.delete(path); }
 }
 function limiter(n) {
@@ -638,7 +648,7 @@ async function playerLogs(pid, seasons, types) {
   await Promise.all(seasons.flatMap(s => types.map(gt =>
     limit(() => api(`v1/player/${pid}/game-log/${s}/${gt}`, 3600000))
       .then(d => { for (const e of (d.gameLog || [])) all.push(Object.assign({}, e, { season: s, gt })); })
-      .catch(() => {}))));
+      .catch(e => { if (e.status !== 404) all.failed = true; }))));
   return all;
 }
 
@@ -651,6 +661,7 @@ async function loadCtx(g, progress = () => {}) {
   const season = /^\d{8}$/.test(S.seasonOverride) ? +S.seasonOverride : (g.season || seasonFromDate(g.date));
   CUR = season;
   const ctx = { key, game: g, date: g.date, season, home: g.home, away: g.away, standings: {}, players: [], sched: {}, box: {}, boxStats: {} };
+  const fails0 = apiFails;
 
   progress('Loading standings and rosters…');
   // Past games: standings from the DAY BEFORE. The NHL's standings for a date already include that night's results.
@@ -724,7 +735,8 @@ async function loadCtx(g, progress = () => {}) {
   } else { ctx.box[g.home] = []; ctx.box[g.away] = []; }
 
   await refreshCtx(ctx);
-  ctxCache.set(key, ctx);
+  ctx.fails = apiFails - fails0;
+  if (!ctx.fails) ctxCache.set(key, ctx);   // a game with failed downloads loads fresh next time
   if (ctxCache.size > 6) ctxCache.delete(ctxCache.keys().next().value);
   return ctx;
 }
@@ -765,8 +777,8 @@ function ctxExtras(ctx) {
       const K = S.goalieShrinkShots, svL = ctx.svBase;
       const sv = svL != null ? (f.sa - f.ga + K * svL) / (f.sa + K) : null;
       const teamSv = svL != null ? (tsa - tga + K * svL) / (tsa + K) : null;
-      const pl = ctx.players.find(p => p.id === +pick);
-      ctx.goalie[T] = { id: +pick, name: pl ? pl.name : 'Unknown goalie', why, sa: f.sa, rawSv: f.sa ? 1 - f.ga / f.sa : null, sv, teamSv, src: 'box',
+      const pl = ctx.players.find(p => p.id === +pick), boxName = boxes.map(b => b.pl[pick]).find(p => p && p.n)?.n;
+      ctx.goalie[T] = { id: +pick, name: pl ? pl.name : (boxName || 'Unknown goalie'), why, sa: f.sa, rawSv: f.sa ? 1 - f.ga / f.sa : null, sv, teamSv, src: 'box',
         ratio: (sv != null && teamSv != null && teamSv < 1) ? (1 - sv) / (1 - teamSv) : null };
     }
     // Team goals on back-to-backs vs normal, from its own schedule history.
@@ -872,6 +884,7 @@ async function playerEntries(ctx, pid, team, mk) {
   } else {
     const seasons = seasonList(Math.max(S.seasonsBack, S.h2hSeasonsBack));
     const logs = await playerLogs(pid, seasons, S.includePlayoffs ? [2, 3] : [2]);
+    if (logs.failed) entries.failed = true;
     for (const e of logs) {
       if (!(e.gameDate < ctx.date)) continue;
       if (M.src === 'glog' && S.goalieStartsOnly && e.gamesStarted !== 1) continue;
@@ -880,9 +893,11 @@ async function playerEntries(ctx, pid, team, mk) {
     }
   }
   const seen = new Set();
+  const failed = entries.failed;
   entries = entries.filter(e => !seen.has(e.gid) && seen.add(e.gid)).sort((a, b) => b.date.localeCompare(a.date));
+  if (failed) entries.failed = true;
   entries.forEach((e, i) => { e.b2b = !!entries[i + 1] && entries[i + 1].date === dateAdd(e.date, -1); });
-  peCache.set(key, entries);
+  if (!entries.failed) peCache.set(key, entries);   // don't remember a player whose stats didn't download
   if (peCache.size > 400) peCache.delete(peCache.keys().next().value);
   return entries;
 }
@@ -2022,7 +2037,7 @@ function finderProg(text, f) {
 }
 async function runFinder() {
   if (state.finding) return;
-  state.finding = true;
+  state.finding = true; apiFails = 0;
   const btn = $('#fGo'); if (btn) btn.disabled = true;
   const date = $('#fDate')?.value || todayStr();
   try {
@@ -2059,7 +2074,7 @@ async function runFinder() {
     finderProg('Building parlays…', 0.95);
     await new Promise(r => setTimeout(r, 30));
     state.findCands = cands;
-    state.found = { date, created: Date.now(), games: games.length, bets: cands.length, cards: [], notes };
+    state.found = { date, created: Date.now(), games: games.length, bets: cands.length, cards: [], notes, fails: apiFails };
     finderRebuild();
     const p = $('#fProg'); if (p) p.innerHTML = '';
     renderFound();
@@ -2074,6 +2089,7 @@ function renderFound() {
   if (!f) { el.innerHTML = ''; return; }
   if (f.none) { el.innerHTML = `<div class="card">No games left to bet on for ${esc(f.date)} — they've all started or there are none. Try another day.</div>`; return; }
   let h = `<div class="card small"><b>${f.cards.length} parlays</b> from ${f.games} game${f.games === 1 ? '' : 's'} on ${esc(f.date)} · checked ${f.bets} bets · found ${new Date(f.created).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}<br>
+    ${f.fails ? `<span class="bad">⚠️ ${f.fails} download${f.fails > 1 ? 's' : ''} from the NHL failed (site busy or connection dropped), so some players or games are missing. Tap <b>🔍 Find my parlays</b> again.</span><br>` : ''}
     ⚠️ Before you bet: make sure each player is playing tonight${f.cards.some(c => c.legs.some(l => l.goalie)) ? ' and each goalie is starting' : ''}.<br>
     ${f.cards.some(c => c.calib) ? `🎯 Chances corrected using your 🧪 test from ${new Date(state.bt.at).toLocaleDateString()}.<br>` : (S.useCalib ? '🎯 Run <b>🧪 Test it</b> (in 📋 My parlays) so the app can correct its chances using real results.<br>' : '')}
     If bet365 doesn't offer a bet, tap <b>🚫 Not on bet365</b> under it and the list rebuilds without it.

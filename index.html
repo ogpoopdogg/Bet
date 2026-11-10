@@ -1887,6 +1887,8 @@ function finderBuild(cands, opts = {}) {
   for (const c of cands) c.pa = opts.noCalib ? c.p : calibP(c.p);
   const corrected = cands.some(c => Math.abs(c.pa - c.p) > 1e-9);
   const sorted = cands.filter(c => types.has(c.market) && (S.finderUnders || !(c.kind === 'player' && c.side === 'under')) && c.pa >= S.finderMinLegProb && c.pa <= S.finderMaxLegProb).sort((a, b) => b.pa - a.pa);
+  const ticked = cands.filter(c => types.has(c.market) && (S.finderUnders || !(c.kind === 'player' && c.side === 'under'))).length;
+  let tried = 0, bestFair = 0;
   const perTypeCap = variety ? Math.max(5, Math.ceil(S.finderPoolSize / Math.max(1, types.size))) : Infinity;
   // Same-game mode: build a separate pool for each game so every game gets its own best bets.
   const groups = sgp ? Object.values(sorted.reduce((m, c) => ((m[c.gameId] = m[c.gameId] || []).push(c), m), {})) : [sorted];
@@ -1925,6 +1927,7 @@ function finderBuild(cands, opts = {}) {
         const jp = jointProb(ps, rm);
         if (!(jp.p > 0)) return;
         const fair = 1 / jp.p;
+        tried++; if (fair > bestFair) bestFair = fair;
         if (fair < S.finderMinPayout * S.finderCushion) return;
         out.push({ legs, P: jp.p, pInd: jp.pInd, factor: jp.factor, fair });
         return;
@@ -1947,6 +1950,7 @@ function finderBuild(cands, opts = {}) {
   if (!opts.keepRes) state.foundRes = {};
   return {
     pool: poolTotal, combos: out.length,
+    diag: { ticked, inRange: sorted.length, pool: poolTotal, tried, bestFair, corrected },
     cards: picked.map(o => ({
       id: uid(), sig: parlaySig(o.legs), P: o.P, pInd: o.pInd, factor: o.factor, fair: o.fair, price: null, calib: corrected,
       sgp: o.legs.every(l => l.gameId === o.legs[0].gameId) ? `${o.legs[0].game.away} @ ${o.legs[0].game.home}` : null,
@@ -1966,8 +1970,11 @@ function finderRebuild() {
   const f = state.found; if (!f || !state.findCands) return;
   const bl = new Set(getBlocked(f.date).keys);
   const gameOnly = S.finderMode === 'sgp' && state.finderGame ? state.finderGame : null;
-  const b = finderBuild(state.findCands.filter(c => !bl.has(blockKey(c)) && (!gameOnly || c.gameId === gameOnly)));
-  Object.assign(f, { pool: b.pool, combos: b.combos, cards: b.cards });
+  const list = state.findCands.filter(c => !bl.has(blockKey(c)) && (!gameOnly || c.gameId === gameOnly));
+  const b = finderBuild(list);
+  // Nothing found with the 🎯 correction on: also count what it finds with the correction off, so we can see the cause.
+  if (!b.cards.length && b.diag.corrected) b.diag.noCalib = finderBuild(list, { noCalib: true, keepRes: true }).cards.length;
+  Object.assign(f, { pool: b.pool, combos: b.combos, cards: b.cards, diag: b.diag });
   saveFound(); renderFound();
 }
 function saveFound() { if (state.found && !LS.set('pv_found', state.found)) toast('Could not save results on this device'); }
@@ -2075,7 +2082,7 @@ function renderFound() {
     ${(() => { const B = getBlocked(f.date); return B.keys.length ? `<br>🚫 ${B.keys.length} bet${B.keys.length > 1 ? 's' : ''} hidden today: <span class="muted">${B.keys.map(k => esc(B.labels[k] || k)).join(', ')}</span> <button class="b s" data-act="fUnhide">Show them again</button>` : ''; })()}</div>`;
   if (!f.cards.length) h += !S.finderTypes.length ? `<div class="card">Tick at least one bet type above.</div>`
     : (!S.finderHighest && S.finderTypes.length < S.finderLegs) ? `<div class="card">With ⭐ Highest probability off, each leg must be a different type — tick at least ${S.finderLegs} bet types, or turn ⭐ back on.</div>`
-    : `<div class="card">Nothing matched. Try ticking more bet types, or in Settings → Parlay finder lower "Lowest leg chance allowed" or "Minimum payout".</div>`;
+    : `<div class="card">Nothing matched. Try ticking more bet types, or in Settings → Parlay finder lower "Lowest leg chance allowed" or "Minimum payout".${findDiagHTML(f.diag)}</div>`;
   f.cards.forEach((c, i) => {
     const oneIn = 1 / c.P;
     h += `<div class="pcard"><div class="small muted">Parlay ${i + 1}${c.sgp ? ` · 🎯 Same game: ${esc(c.sgp)}` : ''}</div>
@@ -2091,6 +2098,13 @@ function renderFound() {
   });
   el.innerHTML = h;
   f.cards.forEach((c, i) => fVerdict(i));
+}
+// Why "Nothing matched": how many bets made it through each step.
+function findDiagHTML(d) {
+  if (!d) return '';
+  const lo = Math.round(S.finderMinLegProb * 100), hi = Math.round(S.finderMaxLegProb * 100), need = S.finderMinPayout * S.finderCushion;
+  return `<div class="small muted" style="margin-top:8px"><b>What happened:</b> ${d.ticked} bets of the types you ticked → ${d.inRange} had a ${lo}–${hi}% chance → ${d.pool} picked to mix → ${d.tried} parlays tried → highest fair payout ${d.bestFair ? d.bestFair.toFixed(2) + '×' : 'none'} (needs ${need.toFixed(2)}×).`
+    + (d.corrected ? ` 🎯 Chance correction is ON${d.noCalib != null ? ` — with it off, ${d.noCalib} parlays would show` : ''}.` : ' 🎯 Chance correction is OFF.') + `</div>`;
 }
 // The verdict box pops only when the answer itself changes, not on every keystroke.
 function fVerdict(i) {
